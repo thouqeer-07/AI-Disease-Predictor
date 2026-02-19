@@ -35,5 +35,8 @@ pip install -r requirements.txt
 
 # 3. Run the app
 streamlit run app.py
-# OR
-python app.py  # if using Flask
+
+##OUTPUT
+
+<img width="1727" height="951" alt="image" src="https://github.com/user-attachments/assets/e8aa5994-2570-4e43-b209-3858fc28d4b7" />
+ 
