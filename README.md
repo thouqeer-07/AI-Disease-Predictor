@@ -1,141 +1,101 @@
 # 🧠 AuraHealth: AI Disease Predictor & Telehealth Platform
 
-AuraHealth is a comprehensive, full-stack medical helper and telehealth monorepo featuring an AI-driven symptom diagnostic engine, a medical chatbot, a real-time health metrics tracker, a doctor-patient teleconnect portal, and an automated Emergency SOS system.
-
-This project is organized as a monorepo containing a web dashboard, a cross-platform mobile application, an Express API gateway, and shared database scripts.
+AuraHealth is an intelligent, patient-centric telehealth platform designed to bridge the gap between AI-driven wellness diagnostics, real-time health tracking, and professional clinical care. 
 
 ---
 
-## 📂 Repository Structure
+## 🗺️ System Overview
 
-The project is divided into four main sections:
+Here is how patients, healthcare providers, and intelligence services interact within the AuraHealth ecosystem:
 
-```
-├── backend/          # Node.js & Express API (Gemini AI, Twilio, Supabase)
-├── web/              # React (Vite) Telehealth Web App
-├── mobile/           # React Native (Expo) Mobile App
-└── shared/           # PostgreSQL Schema (Supabase RLS & DB Triggers)
-```
+```mermaid
+graph TD
+    User([Patient]) -->|Interact| App[AuraHealth Web & Mobile App]
+    App -->|Symptom Entry & 7-Day History| Diagnostics[AI Diagnostics Engine]
+    App -->|Log Metrics| Tracker[Daily Health Tracker]
+    App -->|3s Press & Hold| SOS[SOS Dispatcher]
+    App -->|Consultation & Appointments| DoctorPortal[Doctor Connect Portal]
 
----
-
-## 🚀 Key Features
-
-### 1. 🔍 AI Symptom Diagnostics
-- Leverages the **Google Gemini API** (`gemini-2.5-flash-lite`) to analyze patient-reported symptoms.
-- Contextual analysis: Integrates the patient's past 7 days of lifestyle data (water, steps, sleep, calories) to predict the top 3 most likely conditions with probability ratings.
-- Provides actionable recommendations and clinical explanations.
-
-### 2. 💬 AI Medical Chatbot
-- Interactive AI conversation helper trained on medical contexts.
-- Tracks message history dynamically and logs chat sessions securely in the database.
-
-### 3. 🚨 Emergency SOS (with Twilio Integration)
-- Web & Mobile **Press & Hold SOS** button (with a 3-second safety circle animation).
-- Automatically retrieves patient GPS coordinates.
-- Registers emergency logs in the DB and immediately dispatches SMS and WhatsApp alerts to guardians via the **Twilio API**.
-
-### 4. 🩺 Doctor-Patient Teleconnect
-- Dual-role portal: Supports both **Patients** and **Doctors**.
-- **Patients**: Find doctors by specialty, read reviews, book appointments, send inquiries, and chat in real-time.
-- **Doctors**: Manage upcoming appointments, respond to patient inquiries, track patient metrics, and review patient health history.
-
-### 5. 📊 Health Metrics Tracker
-- Track steps, sleep hours, water intake, and calories burned.
-- Database-level trigger automatically computes a daily overall **Health Score** (Poor, Fair, Good, Excellent) based on logged achievements.
-
-### 6. 💊 Pill Reminders & Stock Tracker
-- Keep track of medication schedules.
-- Log intake status (taken/skipped) and monitor pill stock counts to prompt refills.
-
----
-
-## 🛠️ Tech Stack
-
-- **Backend**: Node.js, Express, `@google/generative-ai`, `@supabase/supabase-js`, Twilio API.
-- **Web Frontend**: React 19, Vite, Tailwind CSS (v4), Redux Toolkit, Recharts (analytics), Lucide Icons.
-- **Mobile App**: React Native, Expo, React Navigation, Redux Toolkit.
-- **Database & Auth**: Supabase (PostgreSQL) with Row Level Security (RLS) and custom PL/pgSQL database triggers.
-
----
-
-## ⚙️ Environment Configurations
-
-Each subfolder contains its own environment setup. Copy the placeholders and fill in your keys:
-
-### 1. Backend (`backend/.env`)
-```env
-PORT=5000
-SUPABASE_URL=https://your-supabase-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-GEMINI_API_KEY=your-google-gemini-api-key
-JWT_SECRET=your-jwt-auth-secret
-TWILIO_ACCOUNT_SID=your-twilio-sid
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-TWILIO_PHONE_NUMBER=your-twilio-sms-number
-TWILIO_WHATSAPP_NUMBER=your-twilio-whatsapp-number
-```
-
-### 2. Web Frontend (`web/.env`)
-```env
-VITE_SUPABASE_URL=https://your-supabase-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-VITE_API_URL=http://localhost:5000/api
-```
-
-### 3. Mobile Frontend (`mobile/.env`)
-```env
-EXPO_PUBLIC_SUPABASE_URL=https://your-supabase-project.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+    Diagnostics -->|Analysis| Output[Top 3 Predicted Conditions & Advice]
+    Tracker -->|Daily Metrics| Score[Automatic Health Rating]
+    SOS -->|Immediate Alerts| SMS[Guardian SMS & WhatsApp Notifications]
+    DoctorPortal -->|Real-time Care| Consultation[Inquiries, Bookings, & Chat]
 ```
 
 ---
 
-## 🚀 Getting Started
+## 🌟 Key Product Features
 
-### Prerequisites
-- Node.js (v18 or higher)
-- npm or yarn
-- Expo Go app on your phone (for mobile testing)
-- Supabase account
+### 1. 🔍 AI Symptom Diagnostics & Analysis
+AuraHealth does not just look at isolated symptoms. It combines raw clinical input with the patient's lifestyle context to provide a comprehensive wellness prediction.
+
+```mermaid
+graph LR
+    Symptoms[Patient-reported Symptoms] --> AI[AI Contextual Engine]
+    Lifestyle[7-Day Health Metrics <br> Steps, Sleep, Water, Calories] --> AI
+    AI --> Reports[Top 3 Condition Predictions <br> Probability Ratings & Clinical Explanations]
+```
+
+*   **Behavioral Context Integration**: Automatically pulls the last 7 days of your health metrics (water intake, sleep quality, daily steps, and calories burned) to evaluate whether lifestyle factors might be causing or exacerbating your symptoms.
+*   **Structured Recommendations**: Provides clear, conversational advice on next steps, lifestyle changes, and warning signs that require a physician's visit.
 
 ---
 
-### 🗄️ Database Setup
-1. Create a new Supabase project.
-2. Open the **SQL Editor** in your Supabase dashboard.
-3. Copy the contents of [`shared/schema.sql`](file:///c:/Users/senth/Videos/TqPdd/shared/schema.sql) and execute the query.
-   - This sets up tables, triggers, and Row Level Security policies.
+### 2. 🚨 Automated Emergency SOS Response
+When every second counts, AuraHealth provides a simple, foolproof way to get help. 
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Patient as Patient
+    participant App as Web/Mobile App
+    participant System as AuraHealth Core
+    actor Guardian as Emergency Guardians
+
+    Patient->>App: Press & Hold SOS (3 Seconds)
+    App->>App: Capture Current Location (GPS)
+    App->>System: Dispatch Emergency Signal
+    System->>System: Fetch Active Emergency Contacts
+    System->>Guardian: Deliver SMS Alert with Location Map Link
+    System->>Guardian: Deliver WhatsApp Alert with Location Map Link
+```
+
+*   **Press & Hold Safety Trigger**: Features a 3-second safety circle animation to prevent accidental triggers.
+*   **Geolocated Notifications**: Automatically gathers coordinates to create a direct Google Maps navigation link.
+*   **Dual-Channel Dispatch**: Distributes urgent alerts simultaneously through SMS and WhatsApp to ensure your active guardians receive them immediately.
 
 ---
 
-### 💻 Running the Services
+### 3. 🩺 Patient-Doctor Teleconnect Portal
+A fully integrated communication loop between patients and healthcare professionals.
 
-#### 1. Start the Backend API
-```bash
-cd backend
-npm install
-npm run dev
-```
-
-#### 2. Start the Web App
-```bash
-cd web
-npm install
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
-
-#### 3. Start the Mobile App
-```bash
-cd mobile
-npm install
-npx expo start
-```
-Scan the QR code using the Expo Go app on Android or iOS camera.
+*   **For Patients**:
+    *   Browse verified doctors by specialty.
+    *   Book appointments, track consultation status, and leave ratings/reviews.
+    *   Inquire with doctors directly and message them in real-time.
+*   **For Doctors**:
+    *   Personalized dashboard showing upcoming schedules.
+    *   Review patient medical logs, prescription histories, and daily health tracking sheets.
+    *   Manage patient inquiries and provide live messaging support.
 
 ---
 
-## 📸 Output Preview
+### 4. 📊 Health Metrics & Automatic Scoring
+An easy-to-use logging system designed to help users establish healthy habits.
+
+*   **Actionable Metrics**: Log daily steps, sleep duration, water consumption, and calorie expenditure.
+*   **Automatic Health Grading**: A background engine analyzes daily progress and assigns an overall wellness rating: **Poor**, **Fair**, **Good**, or **Excellent** to keep you motivated.
+
+---
+
+### 5. 💊 Pill Reminders & Stock Tracker
+Never miss a dose or run out of important prescriptions.
+
+*   **Interactive Log**: Log medication intake status (taken vs. skipped) at scheduled times.
+*   **Smart Refill Reminders**: Monitors current stock counts and automatically alerts you when medication levels are running low.
+
+---
+
+## 📸 Interface Preview
 
 <img width="1727" height="951" alt="Screenshot 2026-02-19 121628" src="https://github.com/user-attachments/assets/0b1addcb-daa9-43a1-8e23-bafbe5e8596a" />
