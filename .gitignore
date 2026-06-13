@@ -45,3 +45,7 @@ pnpm-debug.log*
 lerna-debug.log*
 logs/
 *.log
+
+# Shared database schema and sql resources
+shared/
+
