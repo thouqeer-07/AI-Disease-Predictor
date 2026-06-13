@@ -95,7 +95,3 @@ Never miss a dose or run out of important prescriptions.
 *   **Smart Refill Reminders**: Monitors current stock counts and automatically alerts you when medication levels are running low.
 
 ---
-
-## 📸 Interface Preview
-
-<img width="1727" height="951" alt="Screenshot 2026-02-19 121628" src="https://github.com/user-attachments/assets/0b1addcb-daa9-43a1-8e23-bafbe5e8596a" />
