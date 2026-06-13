@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1d4ed8; /* Blue 700 - Professional/Stable Blue */
+  --color-secondary: #475569; /* Slate 600 - Professional Gray */
+  --color-accent: #3b82f6; /* Blue 500 */
+  --color-futuristic-bg: #f8fafc; /* Slate 50 */
+  --color-glass-bg: rgba(255, 255, 255, 0.8);
+  --color-glass-border: rgba(226, 232, 240, 1); /* Slate 200 */
+}
+
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 font-sans antialiased;
+}
+
+/* Custom Professional Surface Utility */
+.glass {
+  @apply bg-white border border-slate-200 shadow-sm transition-shadow duration-300;
+}
+
+.glass:hover {
+  @apply shadow-md;
+}
+
+/* Refined Dark Mode (Secondary) */
+.dark body {
+  @apply bg-slate-950 text-slate-100;
+}
+
+.dark .glass {
+  @apply bg-slate-900/50 backdrop-blur-md border border-slate-800 shadow-2xl;
+}
+
