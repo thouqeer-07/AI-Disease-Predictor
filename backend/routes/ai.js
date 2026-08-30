@@ -35,6 +35,7 @@ const upload = multer({
 });
 
 router.post('/predict', aiController.predictDisease);
+router.get('/predictions', aiController.getAccountPredictions);
 router.post('/chat', aiController.chat);
 router.post('/upload-report', upload.single('file'), aiController.uploadReport);
 router.post('/rag-chat', aiController.ragChat);

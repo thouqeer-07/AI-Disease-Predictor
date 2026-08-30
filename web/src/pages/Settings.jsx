@@ -271,8 +271,7 @@ const Settings = () => {
    await supabase.from('profiles').delete().eq('id', currentUserId);
    await supabase.from('emergency_contacts').delete().eq('user_id', currentUserId);
    await supabase.from('sos_logs').delete().eq('user_id', currentUserId);
-   await supabase.from('inquiries').delete().eq('patient_id', currentUserId);
-   await supabase.from('inquiries').delete().eq('doctor_id', currentUserId);
+   await supabase.from('inquiries').delete().eq('user_id', currentUserId);
  }
 
  if (currentUserEmail) {

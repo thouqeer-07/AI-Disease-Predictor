@@ -34,17 +34,26 @@ const PatientOnboarding = () => {
     } else {
       setChecking(false);
       if (user?.user_metadata) {
-         setOnboardForm(prev => ({
-           ...prev,
-           gender: user.user_metadata.gender || '',
-           dob: user.user_metadata.dob || '',
-           age: user.user_metadata.age || '',
-           weight: user.user_metadata.weight_kg || '',
-           height: user.user_metadata.height_cm || '',
-           bloodGroup: user.user_metadata.blood_group || '',
-           drugs: user.user_metadata.drugs || '',
-           diseases: user.user_metadata.diseases || ''
-         }));
+        const savedDob = user.user_metadata.dob || '';
+        let autoAge = user.user_metadata.age || '';
+        if ((!autoAge || autoAge === '0') && savedDob) {
+          const bYear = new Date(savedDob).getFullYear();
+          if (!isNaN(bYear) && bYear > 1900) {
+            autoAge = new Date().getFullYear() - bYear;
+          }
+        }
+
+        setOnboardForm(prev => ({
+          ...prev,
+          gender: user.user_metadata.gender || '',
+          dob: savedDob,
+          age: autoAge ? String(autoAge) : '',
+          weight: user.user_metadata.weight_kg || '',
+          height: user.user_metadata.height_cm || '',
+          bloodGroup: user.user_metadata.blood_group || '',
+          drugs: user.user_metadata.drugs || '',
+          diseases: user.user_metadata.diseases || ''
+        }));
       }
     }
   }, [user, navigate]);
@@ -143,39 +152,69 @@ const PatientOnboarding = () => {
           </div>
         )}
 
+        {/* Pre-filled Account Registration Details Card */}
+        {(onboardForm.gender || onboardForm.dob) && (
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold">
+                ✓
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Saved Registration Details</p>
+                <p className="text-xs font-semibold text-white mt-0.5">
+                  {onboardForm.gender && (
+                    <span>Gender: <strong className="text-primary capitalize">{onboardForm.gender}</strong></span>
+                  )}
+                  {onboardForm.gender && onboardForm.dob && <span> • </span>}
+                  {onboardForm.dob && (
+                    <span>DOB: <strong className="text-primary">{onboardForm.dob}</strong></span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold rounded-full">
+              Stored in DB
+            </span>
+          </div>
+        )}
+
         <form onSubmit={handleOnboardSubmit} className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">
-                <UserIcon className="w-3.5 h-3.5 text-slate-400" /> Gender
-              </label>
-              <select
-                name="gender"
-                required
-                value={onboardForm.gender}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3.5 rounded-xl border border-slate-800 bg-slate-950/50 text-white focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none transition-all appearance-none"
-              >
-                <option value="" className="bg-slate-950 text-slate-400">Select Gender</option>
-                <option value="male" className="bg-slate-950 text-white">Male</option>
-                <option value="female" className="bg-slate-950 text-white">Female</option>
-                <option value="other" className="bg-slate-950 text-white">Other</option>
-              </select>
-            </div>
+            {!onboardForm.gender && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">
+                  <UserIcon className="w-3.5 h-3.5 text-slate-400" /> Gender
+                </label>
+                <select
+                  name="gender"
+                  required
+                  value={onboardForm.gender}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3.5 rounded-xl border border-slate-800 bg-slate-950/50 text-white focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none transition-all appearance-none"
+                >
+                  <option value="" className="bg-slate-950 text-slate-400">Select Gender</option>
+                  <option value="male" className="bg-slate-950 text-white">Male</option>
+                  <option value="female" className="bg-slate-950 text-white">Female</option>
+                  <option value="other" className="bg-slate-950 text-white">Other</option>
+                </select>
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">
-                <CalendarIcon className="w-3.5 h-3.5 text-slate-400" /> Date of Birth
-              </label>
-              <input
-                name="dob"
-                type="date"
-                required
-                value={onboardForm.dob}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3.5 rounded-xl border border-slate-800 bg-slate-950/50 text-white focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-              />
-            </div>
+            {!onboardForm.dob && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">
+                  <CalendarIcon className="w-3.5 h-3.5 text-slate-400" /> Date of Birth
+                </label>
+                <input
+                  name="dob"
+                  type="date"
+                  required
+                  value={onboardForm.dob}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3.5 rounded-xl border border-slate-800 bg-slate-950/50 text-white focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 ml-1">

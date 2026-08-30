@@ -7,15 +7,94 @@ import { supabase } from '../lib/supabase';
 import { fetchApiWithFallback } from '../lib/api';
 
 const CANONICAL_SYMPTOMS = [
+  // Core Dataset Symptoms
   "Blurred Vision", "Cold Hands and Feet", "Cough", "Dark Urine", "Daytime Sleepiness", 
   "Difficulty Falling Asleep", "Dizziness", "Dry Mouth", "Extreme Thirst", "Facial Pain", 
   "Fatigue", "Fever", "Frequent Urination", "Headache", "Increased Thirst", 
   "Irritability", "Nasal Congestion", "Nausea", "Pale Skin", "Reduced Sense of Smell", 
   "Runny Nose", "Sensitivity to Light", "Severe Headache", "Shortness of Breath", 
-  "Sore Throat", "Throbbing Head", "Vomiting", "Waking up frequently", "Weakness", "Weight Loss"
+  "Sore Throat", "Throbbing Head", "Vomiting", "Waking up frequently", "Weakness", "Weight Loss",
+  // Expanded Clinical Symptoms
+  "Sneezing", "Wheezing", "Loss of Taste", "Hoarseness", "Ear Pressure",
+  "Chills", "Night Sweats", "Body Aches", "Muscle Pain", "Joint Pain", "Swollen Lymph Nodes",
+  "Abdominal Pain", "Loss of Appetite", "Diarrhea", "Constipation", "Bloating",
+  "Brain Fog", "Neck Stiffness", "Scalp Sensitivity", "Chest Pain", "Rapid Heartbeat", "Fainting",
+  "Restlessness", "Anxiety", "Morning Exhaustion"
 ];
 
-const POPULAR_SYMPTOMS = ["Fever", "Headache", "Fatigue", "Cough", "Sore Throat", "Dizziness", "Nausea", "Runny Nose"];
+const POPULAR_SYMPTOMS = ["Fever", "Headache", "Fatigue", "Cough", "Sore Throat", "Nausea"];
+
+const SYMPTOM_FRIENDLY_MAP = {
+  "Diarrhea": "Loose Motion / Watery Stools",
+  "Nausea": "Feeling Sick / Vomiting Sensation",
+  "Fatigue": "Extreme Tiredness / Low Energy",
+  "Fever": "High Temperature / Chills",
+  "Cough": "Dry or Wet Cough",
+  "Runny Nose": "Excess Mucus / Nasal Discharge",
+  "Sore Throat": "Pain When Swallowing",
+  "Nasal Congestion": "Blocked Nose",
+  "Shortness of Breath": "Difficulty Breathing",
+  "Headache": "Head Pain",
+  "Severe Headache": "Intense Head Pain",
+  "Throbbing Head": "Pulsating Headache",
+  "Dizziness": "Lightheadedness / Unsteadiness",
+  "Blurred Vision": "Unclear / Hazy Sight",
+  "Cold Hands and Feet": "Chilly Extremities",
+  "Dark Urine": "Concentrated / Deep Yellow Urine",
+  "Daytime Sleepiness": "Drowsiness During Day",
+  "Difficulty Falling Asleep": "Trouble Sleeping / Insomnia",
+  "Dry Mouth": "Lack of Saliva",
+  "Extreme Thirst": "Unquenchable Thirst",
+  "Increased Thirst": "Drinking More Water Than Usual",
+  "Facial Pain": "Sinus Pain / Cheek Pressure",
+  "Frequent Urination": "Peeing Very Often",
+  "Irritability": "Mood Swings / Easily Annoyed",
+  "Pale Skin": "Loss of Normal Skin Color",
+  "Reduced Sense of Smell": "Loss of Smell / Anosmia",
+  "Sensitivity to Light": "Eye Discomfort in Light",
+  "Vomiting": "Throwing Up",
+  "Waking up frequently": "Broken Sleep",
+  "Weakness": "Lack of Physical Strength",
+  "Weight Loss": "Unintended Loss of Weight",
+  "Sneezing": "Frequent Sneezes",
+  "Wheezing": "Whistling Sound When Breathing",
+  "Loss of Taste": "Inability to Taste Food",
+  "Hoarseness": "Raspy or Scratchy Voice",
+  "Ear Pressure": "Fullness in Ears",
+  "Chills": "Cold Shivering",
+  "Night Sweats": "Excessive Sweating While Sleeping",
+  "Body Aches": "General Muscle Soreness",
+  "Muscle Pain": "Myalgia / Sore Muscles",
+  "Joint Pain": "Stiff or Aching Joints",
+  "Swollen Lymph Nodes": "Swollen Glands in Neck",
+  "Abdominal Pain": "Stomach Ache / Stomach Pain",
+  "Loss of Appetite": "Not Feeling Hungry",
+  "Constipation": "Difficulty Passing Stool",
+  "Bloating": "Swollen / Gassy Stomach",
+  "Brain Fog": "Lack of Focus / Mental Fatigue",
+  "Neck Stiffness": "Hard to Turn Neck",
+  "Scalp Sensitivity": "Tender Scalp",
+  "Chest Pain": "Tightness / Pain in Chest",
+  "Rapid Heartbeat": "Heart Palpitations",
+  "Fainting": "Blackout / Loss of Consciousness",
+  "Restlessness": "Unable to Sit Still",
+  "Anxiety": "Nervousness / Worry",
+  "Morning Exhaustion": "Waking Up Tired"
+};
+
+const getSymptomLabel = (symptom) => {
+  const friendly = SYMPTOM_FRIENDLY_MAP[symptom];
+  return friendly ? `${symptom} (${friendly})` : symptom;
+};
+
+const SYMPTOM_CATEGORY_MAP = {
+  "Cough": "Respiratory", "Runny Nose": "Respiratory", "Sore Throat": "Respiratory", "Nasal Congestion": "Respiratory", "Shortness of Breath": "Respiratory", "Sneezing": "Respiratory", "Wheezing": "Respiratory", "Loss of Taste": "Respiratory", "Hoarseness": "Respiratory", "Reduced Sense of Smell": "Respiratory",
+  "Headache": "Neurological", "Severe Headache": "Neurological", "Throbbing Head": "Neurological", "Dizziness": "Neurological", "Sensitivity to Light": "Neurological", "Facial Pain": "Neurological", "Brain Fog": "Neurological", "Neck Stiffness": "Neurological", "Scalp Sensitivity": "Neurological",
+  "Fatigue": "Systemic", "Fever": "Systemic", "Weakness": "Systemic", "Pale Skin": "Systemic", "Cold Hands and Feet": "Systemic", "Weight Loss": "Systemic", "Chills": "Systemic", "Night Sweats": "Systemic", "Body Aches": "Systemic", "Muscle Pain": "Systemic", "Joint Pain": "Systemic", "Swollen Lymph Nodes": "Systemic",
+  "Nausea": "Digestive", "Vomiting": "Digestive", "Dry Mouth": "Digestive", "Extreme Thirst": "Digestive", "Increased Thirst": "Digestive", "Frequent Urination": "Digestive", "Dark Urine": "Digestive", "Blurred Vision": "Digestive", "Abdominal Pain": "Digestive", "Loss of Appetite": "Digestive", "Diarrhea": "Digestive", "Constipation": "Digestive", "Bloating": "Digestive",
+  "Chest Pain": "Urgent", "Rapid Heartbeat": "Urgent", "Fainting": "Urgent",
+  "Daytime Sleepiness": "Sleep & Mood", "Difficulty Falling Asleep": "Sleep & Mood", "Waking up frequently": "Sleep & Mood", "Irritability": "Sleep & Mood", "Restlessness": "Sleep & Mood", "Anxiety": "Sleep & Mood", "Morning Exhaustion": "Sleep & Mood"
+};
 
 const AIPrediction = () => {
   const { user } = useSelector((state) => state.auth);
@@ -103,10 +182,15 @@ const AIPrediction = () => {
 
     if (combinedList.length === 0) return;
 
-    const symptomsQuery = combinedList.join(', ');
+    if (selectedSymptoms.length === 1 && !customText.trim()) {
+      alert("When selecting only one symptom, providing additional notes/details is required for an accurate AI prediction.");
+      return;
+    }
 
     setLoading(true);
     setResult(null);
+
+    const symptomsQuery = combinedList.join(', ');
 
     try {
       const data = await fetchApiWithFallback('/ai/predict', {
@@ -114,7 +198,11 @@ const AIPrediction = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           symptoms: symptomsQuery,
-          behavioralData: behavioralData
+          behavioralData: behavioralData,
+          userId: user?.id,
+          userName: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0],
+          userEmail: user?.email,
+          notes: customText.trim() || null
         }),
       });
 
@@ -132,9 +220,12 @@ const AIPrediction = () => {
     sleep: (behavioralData.reduce((acc, d) => acc + (d.sleep_hours || 0), 0) / (behavioralData.length || 1)).toFixed(1)
   };
 
-  const filteredOptions = CANONICAL_SYMPTOMS.filter(s => 
-    s.toLowerCase().includes(searchTerm.toLowerCase()) && !selectedSymptoms.includes(s)
-  );
+  const filteredOptions = CANONICAL_SYMPTOMS.filter(s => {
+    if (selectedSymptoms.includes(s)) return false;
+    const term = searchTerm.toLowerCase();
+    const label = getSymptomLabel(s).toLowerCase();
+    return s.toLowerCase().includes(term) || label.includes(term);
+  });
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-10 animate-in fade-in duration-500">
@@ -216,7 +307,7 @@ const AIPrediction = () => {
                   key={symptom} 
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary font-bold text-sm rounded-lg border border-primary/20 animate-in zoom-in-95"
                 >
-                  {symptom}
+                  {getSymptomLabel(symptom)}
                   <button 
                     type="button"
                     onClick={(e) => { e.stopPropagation(); removeSymptom(symptom); }}
@@ -232,7 +323,7 @@ const AIPrediction = () => {
                 value={searchTerm}
                 onChange={(e) => { setSearchTerm(e.target.value); setDropdownOpen(true); }}
                 onFocus={() => setDropdownOpen(true)}
-                placeholder={selectedSymptoms.length === 0 ? "Type to search symptoms (e.g. Fever, Cough)..." : "Add more symptoms..."}
+                placeholder={selectedSymptoms.length === 0 ? "Type to search symptoms (e.g. Fever, Loose Motion)..." : "Add more symptoms..."}
                 className="flex-1 min-w-[200px] bg-transparent border-none outline-none text-slate-900 placeholder:text-slate-400 font-medium text-sm"
               />
 
@@ -241,19 +332,39 @@ const AIPrediction = () => {
 
             {/* Dropdown Options Popup */}
             {dropdownOpen && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-100">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-100">
                 {filteredOptions.length > 0 ? (
-                  filteredOptions.map((symptom) => (
-                    <button
-                      key={symptom}
-                      type="button"
-                      onClick={() => toggleSymptom(symptom)}
-                      className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-primary/5 hover:text-primary transition-colors flex items-center justify-between"
-                    >
-                      <span>{symptom}</span>
-                      <Plus className="w-4 h-4 text-slate-400" />
-                    </button>
-                  ))
+                  filteredOptions.map((symptom) => {
+                    const category = SYMPTOM_CATEGORY_MAP[symptom] || 'Clinical';
+                    return (
+                      <button
+                        key={symptom}
+                        type="button"
+                        onClick={() => toggleSymptom(symptom)}
+                        className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-primary/5 hover:text-primary transition-colors flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>{getSymptomLabel(symptom)}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            category === 'Urgent' 
+                              ? 'bg-rose-50 text-rose-600 border-rose-200' 
+                              : category === 'Respiratory'
+                              ? 'bg-sky-50 text-sky-600 border-sky-200'
+                              : category === 'Neurological'
+                              ? 'bg-purple-50 text-purple-600 border-purple-200'
+                              : category === 'Digestive'
+                              ? 'bg-amber-50 text-amber-600 border-amber-200'
+                              : category === 'Sleep & Mood'
+                              ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}>
+                            {category}
+                          </span>
+                        </div>
+                        <Plus className="w-4 h-4 text-slate-400 group-hover:text-primary" />
+                      </button>
+                    );
+                  })
                 ) : (
                   <div className="px-4 py-3 text-sm text-slate-400 font-medium text-center">
                     No matching clinical symptoms found. Type below to add custom notes.
@@ -280,7 +391,7 @@ const AIPrediction = () => {
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    {isSelected ? '✓ ' : '+ '}{symptom}
+                    {isSelected ? '✓ ' : '+ '}{getSymptomLabel(symptom)}
                   </button>
                 );
               })}
@@ -288,13 +399,36 @@ const AIPrediction = () => {
           </div>
 
           {/* Custom Text Notes */}
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Additional Details / Custom Notes (Optional):</span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                Additional Details / Custom Notes {selectedSymptoms.length === 1 ? <span className="text-rose-600 font-extrabold uppercase ml-1">(Required for 1 symptom)</span> : '(Optional)'}:
+              </span>
+              {selectedSymptoms.length === 1 && !customText.trim() && (
+                <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+                  Notes Required
+                </span>
+              )}
+            </div>
+
+            {selectedSymptoms.length === 1 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-amber-900 text-xs font-bold animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Since only 1 symptom is selected, please describe additional notes (onset, duration, severity) to ensure accurate AI diagnosis.</span>
+              </div>
+            )}
+
             <textarea 
               value={customText}
               onChange={(e) => setCustomText(e.target.value)}
-              placeholder="e.g. Symptoms started 2 days ago after exposure to cold weather..."
-              className="w-full min-h-[90px] bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm focus:ring-2 focus:ring-primary/10 transition-all outline-none text-slate-900 resize-none"
+              placeholder={selectedSymptoms.length === 1 
+                ? "REQUIRED: Describe your symptom in detail (e.g. Fever started 2 days ago, high temp 102F, chills)..." 
+                : "e.g. Symptoms started 2 days ago after exposure to cold weather..."}
+              className={`w-full min-h-[90px] bg-slate-50 border rounded-xl p-4 text-sm focus:ring-2 focus:ring-primary/10 transition-all outline-none text-slate-900 resize-none ${
+                selectedSymptoms.length === 1 && !customText.trim()
+                  ? 'border-rose-300 focus:border-rose-500 bg-rose-50/20'
+                  : 'border-slate-200'
+              }`}
             />
           </div>
 
@@ -312,7 +446,7 @@ const AIPrediction = () => {
             
             <Button 
               onClick={handlePredict} 
-              disabled={loading || (selectedSymptoms.length === 0 && !customText.trim())}
+              disabled={loading || (selectedSymptoms.length === 0 && !customText.trim()) || (selectedSymptoms.length === 1 && !customText.trim())}
               className="flex-1 h-14 rounded-xl text-lg font-black shadow-md gap-4 group"
             >
               {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Stethoscope className="w-6 h-6 group-hover:rotate-12 transition-transform" />}
@@ -335,7 +469,6 @@ const AIPrediction = () => {
                       </div>
                       <span className={`text-lg font-black ${i === 0 ? 'text-slate-900' : 'text-slate-400'}`}>{p.condition}</span>
                     </div>
-                    <span className={`text-xl font-black ${i === 0 ? 'text-primary' : 'text-slate-900'}`}>{p.probability}</span>
                   </div>
                 ))}
               </div>

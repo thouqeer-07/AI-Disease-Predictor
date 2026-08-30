@@ -49,6 +49,71 @@ if (process.env.SMTP_HOST) {
   });
 }
 
+// Check if an email is already registered across Auth, Doctors, and Pending Inquiries
+router.post('/check-email-exists', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.trim()) {
+    return res.status(400).json({ exists: false, error: 'Email is required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    // 1. Check Supabase Auth users
+    let authMatch = false;
+    try {
+      const { data: authData } = await supabase.auth.admin.listUsers();
+      authMatch = (authData?.users || []).some(u => u.email && u.email.toLowerCase() === cleanEmail);
+    } catch (e) {
+      console.warn('Auth listUsers notice:', e);
+    }
+
+    if (authMatch) {
+      return res.json({
+        exists: true,
+        message: 'This email address is already registered. Please change your email ID or log in to your account.'
+      });
+    }
+
+    // 2. Check Doctors table
+    const { data: docData } = await supabase.from('doctors').select('id').ilike('email', cleanEmail);
+    if (docData && docData.length > 0) {
+      return res.json({
+        exists: true,
+        message: 'This email address is already registered to a doctor account. Please change your email ID or log in.'
+      });
+    }
+
+    // 3. Check PENDING Doctor Applications in Inquiries table (only status === 'new')
+    const { data: inqData } = await supabase
+      .from('inquiries')
+      .select('*')
+      .eq('subject', 'doctor_application')
+      .eq('status', 'new');
+
+    const inqMatch = (inqData || []).some(inq => {
+      try {
+        const payload = JSON.parse(inq.message);
+        return payload.email && payload.email.trim().toLowerCase() === cleanEmail;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    if (inqMatch) {
+      return res.json({
+        exists: true,
+        message: 'A pending verification request with this email address is currently awaiting admin review. Please wait for approval.'
+      });
+    }
+
+    return res.json({ exists: false });
+  } catch (err) {
+    console.error('Check email error:', err);
+    return res.json({ exists: false });
+  }
+});
+
 // Send Welcome & OTP Email
 router.post('/send-welcome', async (req, res) => {
   const { email, fullName } = req.body;
@@ -60,6 +125,10 @@ router.post('/send-welcome', async (req, res) => {
   // Generate a random 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   
+  console.log('========================================');
+  console.log(`🔑 [DEBUG OTP GENERATED] Email: ${email} | OTP: ${otp}`);
+  console.log('========================================');
+
   // Store OTP with 10-minute expiration
   otpStore.set(email.toLowerCase(), {
     otp,
@@ -121,6 +190,8 @@ router.post('/verify-otp', async (req, res) => {
   }
 
   const record = otpStore.get(email.toLowerCase());
+
+  console.log(`🔍 [DEBUG OTP VERIFY] Email: ${email} | Provided OTP: ${otp} | Expected OTP: ${record ? record.otp : 'N/A'}`);
 
   if (!record) {
     return res.status(400).json({ error: 'No pending verification found for this email.' });

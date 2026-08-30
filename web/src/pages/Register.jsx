@@ -225,6 +225,23 @@ const Register = () => {
     const trimmedEmail = formData.email.trim();
 
     try {
+      // Pre-check if email already exists in DB/Auth before proceeding
+      try {
+        const checkRes = await fetchApiWithFallback('/patients/check-email-exists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmedEmail })
+        });
+
+        if (checkRes?.exists) {
+          setError(checkRes.message || 'This email address is already registered. Please change your email ID or log in.');
+          setLoading(false);
+          return;
+        }
+      } catch (checkErr) {
+        console.warn('Email pre-check notice:', checkErr);
+      }
+
       if (role === 'doctor') {
         if (doctorSubTab === 'request') {
           // 1. Submit Verification Request
@@ -277,9 +294,8 @@ const Register = () => {
             const { error: inqErr } = await supabase
               .from('inquiries')
               .insert([{
-                patient_id: adminId,
-                doctor_id: adminId,
-                patient_name: formData.fullName,
+                name: formData.fullName,
+                email: formData.email,
                 subject: 'doctor_application',
                 message: JSON.stringify(appPayload),
                 status: 'new'
@@ -340,6 +356,45 @@ const Register = () => {
           if (signUpError) throw signUpError;
 
           if (data.user) {
+            // Save doctor details into SQL 'doctors' & 'profiles' tables so Admin account fetches and displays them
+            try {
+              await fetchApiWithFallback('/doctors/register-account', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: data.user.id,
+                  email: trimmedEmail,
+                  details
+                })
+              });
+            } catch (saveErr) {
+              console.warn('Doctor DB save notice:', saveErr);
+            }
+
+            try {
+              await supabase.from('doctors').upsert({
+                id: data.user.id,
+                name: details.fullName || 'Doctor',
+                specialty: details.specialty || 'General Physician',
+                license_number: details.licenseNumber || '',
+                hospital_name: details.hospitalName || '',
+                hospital_address: details.hospitalAddress || '',
+                phone_number: details.phoneNumber || ''
+              });
+              await supabase.from('profiles').upsert({
+                id: data.user.id,
+                role: 'doctor',
+                full_name: details.fullName || 'Doctor',
+                phone_number: details.phoneNumber || ''
+              });
+            } catch (clientErr) {
+              console.warn('Direct doctor client insert notice:', clientErr);
+            }
+
+            try {
+              await supabase.auth.signOut();
+            } catch (e) {}
+
             navigate('/login', { state: { message: 'Approved doctor account successfully created! You can now log in.' } });
           }
         }

@@ -289,17 +289,19 @@ const Chatbot = () => {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const currentMessages = messages;
+    const updatedMessages = [...currentMessages, userMessage];
+
+    setMessages(updatedMessages);
     setLoading(true);
 
-    try {
-      if (user) {
-        await supabase.from('chat_history').insert([
-          { user_id: user.id, session_id: targetSid, role: 'user', content: textToSend }
-        ]);
-        await loadHistory(false);
-      }
+    if (user) {
+      supabase.from('chat_history').insert([
+        { user_id: user.id, session_id: targetSid, role: 'user', content: textToSend }
+      ]).then(() => loadHistory(false)).catch(err => console.error("Error saving user chat history:", err));
+    }
 
+    try {
       // Query RAG pipeline backend endpoint
       const data = await fetchApiWithFallback('/ai/chat', {
         method: 'POST',
@@ -307,7 +309,7 @@ const Chatbot = () => {
         body: JSON.stringify({ 
           message: textToSend,
           documentId: activeDocument?.id,
-          history: messages.filter(m => !m.isGreeting && m.content).map(m => ({
+          history: updatedMessages.filter(m => !m.isGreeting && m.content).map(m => ({
             role: m.role === 'user' ? 'user' : 'model',
             parts: [{ text: m.content }]
           }))
@@ -315,13 +317,6 @@ const Chatbot = () => {
       });
 
       const botResponse = data.response || "I'm sorry, I couldn't process that medical query.";
-
-      if (user) {
-        await supabase.from('chat_history').insert([
-          { user_id: user.id, session_id: targetSid, role: 'bot', content: botResponse }
-        ]);
-        await loadHistory(false);
-      }
 
       const botMessage = {
         role: 'bot',
@@ -331,6 +326,12 @@ const Chatbot = () => {
 
       if (currentSessionIdRef.current === targetSid) {
         setMessages(prev => [...prev, botMessage]);
+      }
+
+      if (user) {
+        supabase.from('chat_history').insert([
+          { user_id: user.id, session_id: targetSid, role: 'bot', content: botResponse }
+        ]).then(() => loadHistory(false)).catch(err => console.error("Error saving bot chat history:", err));
       }
 
     } catch (error) {

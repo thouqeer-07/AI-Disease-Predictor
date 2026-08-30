@@ -43,7 +43,7 @@ const ScheduleAppointmentModal = ({ isOpen, onClose, appointment, onConfirm }) =
       // Check for conflicting appointments
       const { data: conflicting, error: conflictErr } = await supabase
         .from('appointments')
-        .select('*, profiles:user_id(full_name)')
+        .select('*')
         .eq('doctor_id', appointment.doctor_id)
         .eq('appointment_date', isoString)
         .in('status', ['accepted', 'scheduled'])

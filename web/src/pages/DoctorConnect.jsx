@@ -416,9 +416,7 @@ const DoctorConnect = () => {
   const handleBookAppointment = async (doctor, notes = '') => {
     if (!user) return;
     
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(10, 0, 0, 0);
+    const sentDate = new Date().toISOString();
 
     try {
       const { error } = await supabase.from('appointments').insert([{
@@ -426,7 +424,7 @@ const DoctorConnect = () => {
         doctor_id: doctor.id,
         doctor_name: doctor.name,
         specialization: doctor.specialty,
-        appointment_date: tomorrow.toISOString(),
+        appointment_date: sentDate,
         status: 'pending',
         notes: notes.trim() || null
       }]);

@@ -11,23 +11,59 @@ const DoctorInquiries = () => {
  const [inquiries, setInquiries] = useState([]);
  const [loading, setLoading] = useState(true);
  
- const fetchInquiries = useCallback(async () => {
- if (!user) return;
- setLoading(true);
- try {
- const { data, error } = await supabase
- .from('inquiries')
- .select('*')
- .eq('doctor_id', user.id)
- .order('created_at', { ascending: false });
+  const fetchInquiries = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      let combinedInquiries = [];
 
- if (data) setInquiries(data);
- } catch (err) {
- console.error('Error fetching inquiries:', err);
- } finally {
- setLoading(false);
- }
- }, [user]);
+      // 1. Fetch appointments for this doctor (patient consultation requests)
+      const { data: apptsData } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('doctor_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (apptsData && apptsData.length > 0) {
+        const apptInquiries = apptsData.map(a => ({
+          id: a.id,
+          patient_name: a.doctor_name || 'Patient Inquiry',
+          subject: a.notes ? `Consultation Request: ${a.notes}` : `Consultation Request (${a.status.toUpperCase()})`,
+          status: a.status === 'pending' ? 'urgent' : 'read',
+          created_at: a.appointment_date || a.created_at
+        }));
+        combinedInquiries.push(...apptInquiries);
+      }
+
+      // 2. Fetch from inquiries table using user_id safely
+      try {
+        const { data: inqData, error: inqErr } = await supabase
+          .from('inquiries')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (!inqErr && inqData) {
+          const formattedInqs = inqData.map(i => ({
+            id: i.id,
+            patient_name: i.name || 'Patient',
+            subject: i.subject || i.message || 'General Inquiry',
+            status: i.status || 'new',
+            created_at: i.created_at
+          }));
+          combinedInquiries.push(...formattedInqs);
+        }
+      } catch (e) {
+        console.warn('Inquiries table fetch notice:', e);
+      }
+
+      setInquiries(combinedInquiries);
+    } catch (err) {
+      console.error('Error fetching inquiries:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
  useEffect(() => {
  fetchInquiries();

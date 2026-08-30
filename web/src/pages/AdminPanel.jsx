@@ -32,23 +32,68 @@ const AdminPanel = () => {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch Patients directly from Supabase DB
-      const { data: patData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'patient')
-      // 2. Fetch Verified Doctors directly from Supabase DB
-      const { data: docData } = await supabase
-        .from('doctors')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // 1. Fetch Patients from Backend API (reads Supabase Auth + Profiles)
+      let patData = null;
+      try {
+        const res = await fetchApiWithFallback('/admin/patients');
+        if (res?.patients && res.patients.length > 0) {
+          patData = res.patients;
+        }
+      } catch (e) {
+        console.warn('Backend patients fetch failed:', e);
+      }
 
-      // 3. Fetch applications directly from Supabase inquiries table
-      const { data: inqs } = await supabase
-        .from('inquiries')
-        .select('*')
-        .eq('subject', 'doctor_application')
-        .order('created_at', { ascending: false });
+      if (!patData || patData.length === 0) {
+        try {
+          const { data } = await supabase.from('profiles').select('*');
+          patData = (data || []).filter(p => !p.role || p.role === 'patient');
+        } catch (e) {
+          console.warn('Direct Supabase profiles fetch failed:', e);
+        }
+      }
+
+      // 2. Fetch Verified Doctors directly from Supabase DB, fallback to Backend API
+      let docData = null;
+      try {
+        const { data } = await supabase.from('doctors').select('*').order('created_at', { ascending: false });
+        docData = data;
+      } catch (e) {
+        console.warn('Direct Supabase doctors fetch failed:', e);
+      }
+
+      if (!docData || docData.length === 0) {
+        try {
+          const res = await fetchApiWithFallback('/admin/doctors');
+          if (res?.doctors) docData = res.doctors;
+        } catch (e) {
+          console.error('Backend doctors fetch failed:', e);
+        }
+      }
+
+      // 3. Fetch applications directly from Supabase inquiries table, fallback to Backend API
+      let inqs = null;
+      try {
+        const { data } = await supabase.from('inquiries').select('*').eq('subject', 'doctor_application').order('created_at', { ascending: false });
+        inqs = data;
+      } catch (e) {
+        console.warn('Direct Supabase inquiries fetch failed:', e);
+      }
+
+      if (!inqs || inqs.length === 0) {
+        try {
+          const res = await fetchApiWithFallback('/admin/applications');
+          if (res?.applications) {
+            inqs = res.applications.map(app => ({
+              id: app.id,
+              status: app.status,
+              created_at: app.created_at,
+              message: JSON.stringify(app)
+            }));
+          }
+        } catch (e) {
+          console.error('Backend applications fetch failed:', e);
+        }
+      }
 
       const parsedApps = (inqs || []).map(inq => {
         let payload = {};
@@ -183,7 +228,7 @@ const AdminPanel = () => {
       try {
         const { error } = await supabase
           .from('inquiries')
-          .update({ status: 'read' })
+          .update({ status: 'resolved' })
           .eq('id', id);
         if (error) throw error;
 
@@ -294,7 +339,6 @@ const AdminPanel = () => {
         if (targetEmail) await supabase.from('doctors').delete().ilike('email', targetEmail);
 
         await supabase.from('profiles').delete().eq('id', id);
-        if (targetEmail) await supabase.from('profiles').delete().ilike('email', targetEmail);
 
         if (targetEmail) {
           const { data: inqs } = await supabase.from('inquiries').select('*').eq('subject', 'doctor_application');
@@ -337,7 +381,6 @@ const AdminPanel = () => {
         const cleanEmail = targetPat?.email ? targetPat.email.trim().toLowerCase() : null;
 
         await supabase.from('profiles').delete().eq('id', id);
-        if (cleanEmail) await supabase.from('profiles').delete().ilike('email', cleanEmail);
 
         await supabase.from('emergency_contacts').delete().eq('user_id', id);
         await supabase.from('sos_logs').delete().eq('user_id', id);
@@ -477,7 +520,7 @@ const AdminPanel = () => {
                             <span className="text-slate-500 text-xs">{app.specialty} • {app.email}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            {app.status === 'read' ? (
+                            {app.status === 'resolved' || app.status === 'read' ? (
                               <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold text-xs flex items-center gap-1.5">
                                 <Check className="w-3.5 h-3.5" /> Approved
                               </span>
@@ -646,16 +689,14 @@ const AdminPanel = () => {
                           </div>
                         </div>
                         <div className="flex sm:flex-col gap-2 shrink-0">
-                          {app.documentPhoto && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="text-sm flex items-center gap-2 justify-center w-full shadow-sm bg-slate-50 border-slate-200"
-                              onClick={() => setSelectedApp(app)}
-                            >
-                              <Eye className="w-4 h-4 text-slate-500" /> View Documents
-                            </Button>
-                          )}
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-sm flex items-center gap-2 justify-center w-full shadow-sm bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                            onClick={() => setSelectedApp(app)}
+                          >
+                            <Eye className="w-4 h-4 text-blue-600" /> Review Details
+                          </Button>
                           <div className="flex gap-2 w-full mt-1">
                             <Button 
                               variant="outline" 
@@ -736,17 +777,20 @@ const AdminPanel = () => {
                   <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Height</p>
                   <p className="font-semibold text-slate-800">{selectedPatient.height_cm ? `${selectedPatient.height_cm} cm` : 'N/A'}</p>
                 </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Registration Date</p>
+                  <p className="font-semibold text-slate-800 text-sm">
+                    {selectedPatient.applicationDate || selectedPatient.created_at ? new Date(selectedPatient.applicationDate || selectedPatient.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                  </p>
+                </div>
               </div>
               
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Medical History & Notes</p>
                 {(() => {
                   const history = selectedPatient.medical_history;
-                  if (!history) {
-                    return <p className="text-sm text-slate-400 italic">No medical history recorded.</p>;
-                  }
-
                   let parsed = null;
+
                   if (typeof history === 'object' && history !== null) {
                     parsed = history;
                   } else if (typeof history === 'string') {
@@ -756,42 +800,46 @@ const AdminPanel = () => {
                     }
                   }
 
-                  if (parsed && typeof parsed === 'object') {
-                    return (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
-                        {parsed.dob && (
-                          <div className="p-3 rounded-lg bg-white border border-slate-200">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date of Birth</p>
-                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{parsed.dob}</p>
-                          </div>
-                        )}
-                        {parsed.diseases && (
-                          <div className="p-3 rounded-lg bg-white border border-slate-200">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Medical Conditions / Diseases</p>
-                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{parsed.diseases}</p>
-                          </div>
-                        )}
-                        {parsed.drugs && (
-                          <div className="p-3 rounded-lg bg-white border border-slate-200">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Current Medications / Drugs</p>
-                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{parsed.drugs}</p>
-                          </div>
-                        )}
-                        {Object.keys(parsed).map(key => {
-                          if (['dob', 'diseases', 'drugs'].includes(key) || !parsed[key]) return null;
-                          const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                          return (
-                            <div key={key} className="p-3 rounded-lg bg-white border border-slate-200">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
-                              <p className="text-sm font-semibold text-slate-800 mt-0.5">{parsed[key]}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
+                  const diseasesText = selectedPatient.diseases || parsed?.diseases || null;
+                  const drugsText = selectedPatient.drugs || parsed?.drugs || null;
+                  const dobText = selectedPatient.dob && selectedPatient.dob !== 'Not Specified' ? selectedPatient.dob : parsed?.dob || null;
+
+                  if (!history && !diseasesText && !drugsText) {
+                    return <p className="text-sm text-slate-400 italic">No medical history recorded.</p>;
                   }
 
-                  return <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{history}</p>;
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                      {dobText && (
+                        <div className="p-3 rounded-lg bg-white border border-slate-200">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date of Birth</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-0.5">{dobText}</p>
+                        </div>
+                      )}
+                      {diseasesText && (
+                        <div className="p-3 rounded-lg bg-white border border-slate-200">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Medical Conditions / Diseases</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-0.5">{diseasesText}</p>
+                        </div>
+                      )}
+                      {drugsText && (
+                        <div className="p-3 rounded-lg bg-white border border-slate-200">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Current Medications / Drugs</p>
+                          <p className="text-sm font-semibold text-slate-800 mt-0.5">{drugsText}</p>
+                        </div>
+                      )}
+                      {parsed && typeof parsed === 'object' && Object.keys(parsed).map(key => {
+                        if (['dob', 'diseases', 'drugs'].includes(key) || !parsed[key]) return null;
+                        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        return (
+                          <div key={key} className="p-3 rounded-lg bg-white border border-slate-200">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{String(parsed[key])}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
                 })()}
               </div>
             </div>
@@ -881,7 +929,9 @@ const AdminPanel = () => {
                 
                 <div className="col-span-2 p-4 rounded-xl bg-slate-50 border border-slate-100">
                   <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Application Date</p>
-                  <p className="font-semibold text-slate-800">{selectedDoctor.applicationDate ? new Date(selectedDoctor.applicationDate).toLocaleDateString() : 'N/A'}</p>
+                  <p className="font-semibold text-slate-800">
+                    {selectedDoctor.applicationDate || selectedDoctor.created_at ? new Date(selectedDoctor.applicationDate || selectedDoctor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                  </p>
                 </div>
 
                 {selectedDoctor.documentPhoto && (
@@ -908,14 +958,19 @@ const AdminPanel = () => {
         </div>
       )}
 
-      {/* Document View Modal (Pending Approvals) */}
+      {/* Comprehensive Doctor Verification Application Review Modal */}
       {selectedApp && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-100">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <div>
-                <h3 className="font-bold text-lg text-slate-900">Dr. {selectedApp.fullName} • Verification Documents</h3>
-                <p className="text-xs text-slate-500">License: <span className="font-mono">{selectedApp.licenseNumber}</span> | Specialty: {selectedApp.specialty} | DOB: {selectedApp.dob || selectedApp.dateOfBirth || 'N/A'}</p>
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl font-bold">
+                  {selectedApp.fullName ? selectedApp.fullName.charAt(0).toUpperCase() : 'D'}
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-900">Dr. {selectedApp.fullName}</h3>
+                  <p className="text-xs text-slate-500">{selectedApp.email} • {selectedApp.phoneNumber || 'N/A'}</p>
+                </div>
               </div>
               <button 
                 onClick={() => setSelectedApp(null)}
@@ -925,25 +980,67 @@ const AdminPanel = () => {
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto bg-slate-900/5 flex flex-col items-center justify-center min-h-[400px]">
-              {selectedApp.documentPhoto && selectedApp.documentPhoto.startsWith('data:') ? (
-                <img 
-                  src={selectedApp.documentPhoto} 
-                  alt="Doctor Credentials Document" 
-                  className="max-w-full h-auto max-h-[60vh] object-contain rounded-xl shadow-md border border-slate-200 bg-white"
-                />
-              ) : (
-                <div className="text-center text-slate-400">
-                  <FileText className="w-16 h-16 mx-auto mb-3 text-slate-300" />
-                  <p className="text-sm font-medium">Document format not recognized as base64 preview.</p>
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Credentials Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Specialty</p>
+                  <p className="font-semibold text-slate-800 text-sm">{selectedApp.specialty || 'N/A'}</p>
                 </div>
-              )}
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">License Number</p>
+                  <p className="font-semibold text-slate-800 font-mono text-sm">{selectedApp.licenseNumber || 'N/A'}</p>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Date of Birth</p>
+                  <p className="font-semibold text-slate-800 text-sm">{selectedApp.dob || selectedApp.dateOfBirth || 'N/A'}</p>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Gender</p>
+                  <p className="font-semibold text-slate-800 text-sm capitalize">{selectedApp.gender || 'N/A'}</p>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Experience</p>
+                  <p className="font-semibold text-slate-800 text-sm">{selectedApp.experienceYears ? `${selectedApp.experienceYears} Years` : 'N/A'}</p>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Phone Number</p>
+                  <p className="font-semibold text-slate-800 text-sm">{selectedApp.phoneNumber || 'N/A'}</p>
+                </div>
+                <div className="col-span-2 sm:col-span-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Hospital / Clinic Name</p>
+                  <p className="font-semibold text-slate-800 text-sm">{selectedApp.hospitalName || 'N/A'}</p>
+                </div>
+                {selectedApp.hospitalAddress && (
+                  <div className="col-span-2 sm:col-span-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Hospital / Clinic Address</p>
+                    <p className="text-sm text-slate-700 leading-relaxed">{selectedApp.hospitalAddress}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Verification Document Section */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-3">Verification Document / Licensure Proof</p>
+                {selectedApp.documentPhoto && selectedApp.documentPhoto.startsWith('data:') ? (
+                  <img 
+                    src={selectedApp.documentPhoto} 
+                    alt="Doctor Credentials Document" 
+                    className="w-full max-h-[350px] object-contain rounded-xl shadow-md border border-slate-200 bg-white"
+                  />
+                ) : (
+                  <div className="text-center py-8 text-slate-400 bg-white rounded-xl border border-slate-200">
+                    <FileText className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                    <p className="text-sm font-medium">No document photo uploaded with application.</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-5 border-t border-slate-100 bg-white flex justify-between items-center">
-              <p className="text-xs text-slate-400 font-medium">Please verify all credentials before approving.</p>
+              <p className="text-xs text-slate-400 font-medium">Verify credentials before approving account creation.</p>
               <div className="flex gap-3">
-                <Button variant="outline" onClick={() => setSelectedApp(null)}>Close Viewer</Button>
+                <Button variant="outline" onClick={() => setSelectedApp(null)}>Close</Button>
                 <Button 
                   variant="outline" 
                   className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"

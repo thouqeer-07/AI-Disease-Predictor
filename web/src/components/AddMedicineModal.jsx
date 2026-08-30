@@ -91,8 +91,15 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, initialData = null }) => {
       
       // Request notification permission if not granted
       if ('Notification' in window && Notification.permission !== 'granted') {
-        await Notification.requestPermission();
+        try {
+          await Notification.requestPermission();
+        } catch (e) {
+          console.error('Permission request error:', e);
+        }
       }
+
+      // Notify NotificationManager to refetch immediately
+      window.dispatchEvent(new CustomEvent('medications-updated'));
 
       onSave();
       onClose();

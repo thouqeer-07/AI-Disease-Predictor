@@ -12,7 +12,10 @@ import {
  Plus,
  MessageCircle,
  Calendar,
- Bell
+ Bell,
+ Clock,
+ Video,
+ X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -30,6 +33,89 @@ import { Card, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
 import { supabase } from '../lib/supabase';
 import LogMetricModal from '../components/LogMetricModal';
+
+const ScheduledApptsModal = ({ appointments, onClose, navigate }) => {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+      <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl p-8 space-y-6 animate-in zoom-in-95 duration-200 border border-slate-100 dark:border-zinc-800 max-h-[85vh] flex flex-col">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white leading-tight">Scheduled Doctor Appointments</h3>
+              <p className="text-slate-500 text-xs mt-0.5">Track your upcoming & past consultations</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+          {appointments.length > 0 ? (
+            appointments.map((appt) => {
+              const apptDate = new Date(appt.appointment_date || appt.created_at || Date.now());
+              const dayNum = apptDate.getDate();
+              const monthShort = apptDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+              const timeStr = apptDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const docName = appt.doctor_name || 'Specialist Doctor';
+
+              return (
+                <div key={appt.id} className="p-5 rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-xl bg-primary/10 border border-primary/20 flex flex-col items-center justify-center shrink-0">
+                      <span className="text-primary font-black text-xl leading-none">{dayNum}</span>
+                      <span className="text-primary text-[10px] uppercase font-black tracking-widest mt-1 opacity-70">{monthShort}</span>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-base text-slate-900 dark:text-white">Consultation with {docName}</h4>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 font-medium">
+                        <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {timeStr}</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1"><Video className="w-3.5 h-3.5" /> Tele-Consultation</span>
+                      </div>
+                      <div className="mt-2">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          appt.status === 'accepted' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' :
+                          appt.status === 'rejected' ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400' :
+                          appt.status === 'completed' ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400' :
+                          'bg-amber-100 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400'
+                        }`}>
+                          {appt.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center justify-end">
+                    {appt.status === 'accepted' ? (
+                      <Button onClick={() => { onClose(); navigate(`/chat/${appt.id}`); }} className="rounded-xl px-5 py-2.5 text-xs font-black shadow-sm gap-2">
+                        <MessageCircle className="w-4 h-4" />
+                        Join Chat
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">
+                        {appt.status === 'pending' ? 'Waiting for doctor' : `Status: ${appt.status}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-12 text-slate-400">
+              <Calendar className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p className="font-bold text-sm">No scheduled appointments found</p>
+              <p className="text-xs mt-1 text-slate-400">Book a consultation under Doctor Connect.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const StatCard = ({ title, value, unit, icon: Icon, color, loading, onAdd }) => (
  <Card className="flex flex-col gap-2 relative overflow-hidden group border-slate-100 hover:border-primary/20">
@@ -91,6 +177,7 @@ const Dashboard = () => {
  const [activeMetricTab, setActiveMetricTab] = useState('water');
  const [lowStockMeds, setLowStockMeds] = useState([]);
  const [showNotifications, setShowNotifications] = useState(false);
+ const [showApptsModal, setShowApptsModal] = useState(false);
  const navigate = useNavigate();
 
 
@@ -133,7 +220,7 @@ const Dashboard = () => {
 
       // 2. Calculate Today's Daily Health Score & Upsert
       const waterPct = Math.min(100, (todayMetrics.water / 2.5) * 100);
-      const stepsPct = Math.min(100, (todayMetrics.steps / 10000) * 100);
+      const stepsPct = Math.min(100, (todayMetrics.steps / 5000) * 100);
       const sleepPct = Math.min(100, (todayMetrics.sleep / 8) * 100);
       const caloriesPct = Math.min(100, (todayMetrics.calories / 2000) * 100);
 
@@ -200,13 +287,12 @@ const Dashboard = () => {
       })) : [];
       setTrends(formattedTrends);
 
-      // 4. Fetch Accepted Appointments for Chat
+      // 4. Fetch All Scheduled Appointments for User
       const { data: apptData } = await supabase
         .from('appointments')
         .select('*')
         .eq('user_id', user.id)
-        .eq('status', 'accepted')
-        .order('appointment_date', { ascending: true });
+        .order('appointment_date', { ascending: false });
       
       setAppointments(apptData || []);
 
@@ -357,6 +443,19 @@ const Dashboard = () => {
  </div>
  
  <div className="flex items-center gap-4 relative">
+    <button 
+      onClick={() => setShowApptsModal(true)} 
+      className="p-3 rounded-full bg-white border border-slate-200 hover:bg-slate-50 hover:border-primary/30 transition-all relative group cursor-pointer"
+      title="View Scheduled Doctor Appointments"
+    >
+      <Calendar className="w-5 h-5 text-slate-600 group-hover:text-primary transition-colors" />
+      {appointments.length > 0 && (
+        <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+          {appointments.length}
+        </span>
+      )}
+    </button>
+
     <button 
       onClick={() => setShowNotifications(!showNotifications)} 
       className="p-3 rounded-full bg-white border border-slate-200 hover:bg-slate-50 transition-colors relative"
@@ -652,15 +751,23 @@ const Dashboard = () => {
   </div>
  </div>
 
- <LogMetricModal 
- isOpen={modalConfig.isOpen} 
- initialType={modalConfig.type}
- onClose={() => setModalConfig({ ...modalConfig, isOpen: false })} 
- onSave={() => {
- setModalConfig({ ...modalConfig, isOpen: false });
- setTimeout(fetchData, 500);
- }} 
- />
+  {showApptsModal && (
+    <ScheduledApptsModal 
+      appointments={appointments} 
+      onClose={() => setShowApptsModal(false)}
+      navigate={navigate}
+    />
+  )}
+
+  <LogMetricModal 
+  isOpen={modalConfig.isOpen} 
+  initialType={modalConfig.type}
+  onClose={() => setModalConfig({ ...modalConfig, isOpen: false })} 
+  onSave={() => {
+  setModalConfig({ ...modalConfig, isOpen: false });
+  setTimeout(fetchData, 500);
+  }} 
+  />
 
  </div>
  );

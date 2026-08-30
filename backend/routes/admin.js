@@ -61,21 +61,7 @@ async function sendEmailNotification(toEmail, doctorName, status) {
 // Get all applications (pending & past)
 router.get('/applications', async (req, res) => {
   try {
-    // 1. Fetch admin's profile ID
-    const { data: adminProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', 'admin@aurahealth.com')
-      .single();
-
-    if (profileError || !adminProfile) {
-      console.error('Error fetching admin profile:', profileError);
-      return res.status(500).json({ error: 'System Admin profile not found.' });
-    }
-
-    const adminId = adminProfile.id;
-
-    // 2. Fetch doctor application inquiries
+    // Fetch doctor application inquiries
     const { data: inquiries, error } = await supabase
       .from('inquiries')
       .select('*')
@@ -137,10 +123,10 @@ router.post('/approve-doctor', async (req, res) => {
       console.error('Failed to parse inquiry message JSON:', e);
     }
 
-    // 2. Update status of the inquiry to 'read' (approved)
+    // 2. Update status of the inquiry to 'resolved' (approved)
     const { error: updateError } = await supabase
       .from('inquiries')
-      .update({ status: 'read' })
+      .update({ status: 'resolved' })
       .eq('id', id);
 
     if (updateError) {
@@ -219,10 +205,10 @@ router.post('/reject-doctor', async (req, res) => {
 
     const payload = JSON.parse(inquiry.message);
 
-    // 2. Update status of the inquiry to 'urgent' (rejected)
+    // 2. Update status of the inquiry to 'resolved' (rejected)
     const { error: updateError } = await supabase
       .from('inquiries')
-      .update({ status: 'urgent' })
+      .update({ status: 'resolved' })
       .eq('id', id);
 
     if (updateError) {
@@ -244,21 +230,87 @@ router.post('/reject-doctor', async (req, res) => {
   }
 });
 
-// Fetch all patients
+// Fetch all patients (queries Supabase Auth & profiles table)
 router.get('/patients', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'patient')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Error fetching patients:', error);
-      return res.status(400).json({ error: error.message });
+    let authUsers = [];
+    try {
+      const { data: authData } = await supabase.auth.admin.listUsers();
+      if (authData?.users) authUsers = authData.users;
+    } catch (e) {
+      console.error('Error listing auth users:', e);
     }
-    
-    res.json({ patients: data || [] });
+
+    let profiles = [];
+    try {
+      const { data: profData } = await supabase.from('profiles').select('*');
+      if (profData) profiles = profData;
+    } catch (e) {}
+
+    // Filter for accounts with patient role or non-admin/non-doctor user accounts
+    const patientUsers = authUsers.filter(u => {
+      const r = u.user_metadata?.role || u.role;
+      return r === 'patient' || (!r && u.email !== 'admin@aurahealth.com');
+    });
+
+    const patients = patientUsers.map(u => {
+      const meta = u.user_metadata || {};
+      const prof = profiles.find(p => p.id === u.id) || {};
+      
+      const dobStr = meta.dob || prof.dob || null;
+      let ageVal = meta.age || prof.age || null;
+      if ((!ageVal || ageVal === 0 || ageVal === '0') && dobStr && dobStr !== 'Not Specified') {
+        const birthYear = new Date(dobStr).getFullYear();
+        if (!isNaN(birthYear) && birthYear > 1900 && birthYear <= new Date().getFullYear()) {
+          ageVal = new Date().getFullYear() - birthYear;
+        }
+      }
+
+      let rawWeight = meta.weight_kg || meta.weight || prof.weight_kg || prof.weight || null;
+      let rawHeight = meta.height_cm || meta.height || prof.height_cm || prof.height || null;
+
+      // Sanitize unrealistic test entries (>300kg or >300cm)
+      if (rawWeight && (isNaN(parseFloat(rawWeight)) || parseFloat(rawWeight) > 500)) {
+        rawWeight = null;
+      }
+      if (rawHeight && (isNaN(parseFloat(rawHeight)) || parseFloat(rawHeight) > 300)) {
+        rawHeight = null;
+      }
+
+      const diseasesVal = meta.diseases || prof.diseases || null;
+      const drugsVal = meta.drugs || prof.drugs || null;
+
+      let medHistory = prof.medical_history || meta.medical_history || null;
+      if (!medHistory && (diseasesVal || drugsVal || dobStr)) {
+        medHistory = {
+          dob: dobStr !== 'Not Specified' ? dobStr : null,
+          diseases: diseasesVal,
+          drugs: drugsVal
+        };
+      }
+
+      return {
+        id: u.id,
+        email: u.email || meta.email || 'N/A',
+        full_name: meta.full_name || prof.full_name || 'Patient',
+        phone_number: meta.phone_number || prof.phone_number || 'N/A',
+        dob: dobStr || 'Not Specified',
+        age: ageVal ? `${ageVal} yrs` : 'N/A',
+        gender: meta.gender || prof.gender || 'Not Specified',
+        blood_group: meta.blood_group || prof.blood_group || 'N/A',
+        weight_kg: rawWeight,
+        height_cm: rawHeight,
+        diseases: diseasesVal,
+        drugs: drugsVal,
+        medical_history: medHistory,
+        created_at: u.created_at || prof.created_at || new Date().toISOString(),
+        applicationDate: u.created_at || prof.created_at || new Date().toISOString(),
+        role: 'patient',
+        is_verified: meta.is_verified || false
+      };
+    });
+
+    res.json({ patients });
   } catch (err) {
     console.error('Fetch patients catch error:', err);
     res.status(500).json({ error: 'An unexpected error occurred.' });
@@ -279,11 +331,11 @@ router.get('/doctors', async (req, res) => {
     }
     
     // Fetch auth users to get user_metadata (like dob)
-    const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
     let users = [];
-    if (!authError && authData?.users) {
-      users = authData.users;
-    }
+    try {
+      const { data: authData } = await supabase.auth.admin.listUsers();
+      if (authData?.users) users = authData.users;
+    } catch (e) {}
 
     // Fetch inquiries to link documents and application dates
     const { data: inquiries } = await supabase.from('inquiries').select('*');
@@ -296,31 +348,61 @@ router.get('/doctors', async (req, res) => {
       }
     }).filter(Boolean);
 
+    // Auto-sync any doctor accounts registered in Supabase Auth missing from SQL doctors table
+    const doctorAuthUsers = users.filter(u => u.user_metadata?.role === 'doctor' || u.role === 'doctor');
+    for (const dUser of doctorAuthUsers) {
+      const existsInTable = (data || []).some(d => d.id === dUser.id);
+      if (!existsInTable && dUser.email) {
+        const meta = dUser.user_metadata || {};
+        try {
+          await supabase.from('doctors').upsert({
+            id: dUser.id,
+            name: meta.full_name || 'Doctor',
+            specialty: meta.specialty || 'General Physician',
+            license_number: meta.license_number || meta.licenseNumber || '',
+            hospital_name: meta.hospital_name || meta.hospitalName || '',
+            hospital_address: meta.hospital_address || meta.hospitalAddress || '',
+            phone_number: meta.phone_number || meta.phoneNumber || ''
+          });
+        } catch (e) {}
+      }
+    }
+
+    // Re-fetch updated doctors list
+    const { data: updatedDocs } = await supabase.from('doctors').select('*').order('created_at', { ascending: false });
+    const finalDocsList = updatedDocs || data || [];
+
     // Merge dob, document, and applicationDate into doctors data
-    const doctorsWithDob = (data || []).map(doc => {
-      const user = users.find(u => u.id === doc.id);
-      const email = user?.email || doc.profiles?.email || null;
+    const doctorsWithDob = finalDocsList.map(doc => {
+      const user = users.find(u => u.id === doc.id || (u.email && doc.email && u.email.toLowerCase() === doc.email.toLowerCase()));
+      const email = doc.email || user?.email || null;
       
-      let documentPhoto = null;
-      let applicationDate = null;
-      
+      let app = null;
       if (email) {
-        // Find matching inquiry by email
-        const app = parsedInquiries.find(a => a.email && a.email.toLowerCase() === email.toLowerCase());
-        if (app) {
-          documentPhoto = app.documentPhoto;
-          applicationDate = app.applicationDate;
-        }
+        app = parsedInquiries.find(a => a.email && a.email.toLowerCase() === email.toLowerCase());
+      }
+      if (!app && doc.name) {
+        app = parsedInquiries.find(a => a.fullName && a.fullName.toLowerCase() === doc.name.toLowerCase());
       }
 
       return {
         ...doc,
-        dob: user?.user_metadata?.dob || null,
-        full_name: doc.name || user?.user_metadata?.full_name || 'N/A',
-        bio: user?.user_metadata?.bio || doc.bio || null,
-        education: user?.user_metadata?.education || null,
-        documentPhoto,
-        applicationDate
+        id: doc.id || user?.id,
+        email: email || app?.email || user?.email || 'N/A',
+        full_name: doc.name || user?.user_metadata?.full_name || app?.fullName || 'N/A',
+        specialty: doc.specialty || app?.specialty || user?.user_metadata?.specialty || 'General Physician',
+        license_number: doc.license_number || app?.licenseNumber || app?.license_number || user?.user_metadata?.license_number || 'N/A',
+        hospital_name: doc.hospital_name || app?.hospitalName || app?.hospital_name || user?.user_metadata?.hospital_name || 'N/A',
+        hospital_address: doc.hospital_address || app?.hospitalAddress || app?.hospital_address || user?.user_metadata?.hospital_address || 'N/A',
+        phone_number: doc.phone_number || user?.user_metadata?.phone_number || app?.phoneNumber || 'N/A',
+        experience_years: doc.experience_years || app?.experienceYears || 0,
+        dob: user?.user_metadata?.dob || app?.dob || doc.dob || 'Not Specified',
+        gender: user?.user_metadata?.gender || app?.gender || doc.gender || 'Not Specified',
+        bio: user?.user_metadata?.bio || doc.bio || app?.bio || null,
+        education: user?.user_metadata?.education || doc.education || app?.education || null,
+        documentPhoto: app?.documentPhoto || doc.documentPhoto || null,
+        created_at: app?.applicationDate || app?.created_at || user?.created_at || doc.created_at || new Date().toISOString(),
+        applicationDate: app?.applicationDate || app?.created_at || user?.created_at || doc.created_at || new Date().toISOString()
       };
     });
 
@@ -374,15 +456,13 @@ const deleteUserCompleteCascade = async (id) => {
 
     // 3. Delete from profiles table
     await supabase.from('profiles').delete().eq('id', id);
-    if (userEmail) await supabase.from('profiles').delete().ilike('email', userEmail.trim());
 
     // 4. Delete emergency contacts & SOS logs
     await supabase.from('emergency_contacts').delete().eq('user_id', id);
     await supabase.from('sos_logs').delete().eq('user_id', id);
 
     // 5. Delete inquiries / applications
-    await supabase.from('inquiries').delete().eq('patient_id', id);
-    await supabase.from('inquiries').delete().eq('doctor_id', id);
+    await supabase.from('inquiries').delete().eq('user_id', id);
     if (userEmail) {
       const { data: inquiries } = await supabase.from('inquiries').select('*');
       for (const inq of (inquiries || [])) {

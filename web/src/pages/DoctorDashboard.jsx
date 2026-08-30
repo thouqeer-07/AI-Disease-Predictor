@@ -39,13 +39,28 @@ const DoctorDashboard = () => {
  setLoading(true);
  try {
  // 1. Fetch Appointments for this doctor
- const { data: appts } = await supabase
+ const { data: rawAppts } = await supabase
  .from('appointments')
- .select('*, profiles:user_id(full_name)')
+ .select('*')
  .eq('doctor_id', user.id)
  .order('appointment_date', { ascending: true });
 
- const currentAppts = appts || [];
+ let currentAppts = rawAppts || [];
+ const userIds = [...new Set(currentAppts.map(a => a.user_id).filter(Boolean))];
+ if (userIds.length > 0) {
+   const { data: profs } = await supabase
+     .from('profiles')
+     .select('id, full_name')
+     .in('id', userIds);
+   
+   currentAppts = currentAppts.map(a => {
+     const p = profs?.find(prof => prof.id === a.user_id);
+     return {
+       ...a,
+       profiles: p ? { full_name: p.full_name } : { full_name: a.patient_name || 'Patient' }
+     };
+   });
+ }
  setAppointments(currentAppts);
 
  // 2. Fetch Doctor's actual profile
@@ -173,7 +188,7 @@ const DoctorDashboard = () => {
  </div>
  <div>
  <p className="font-bold">{appt.profiles?.full_name || appt.patient_name || 'Anonymous Patient'}</p>
- <p className="text-sm text-slate-500">{new Date(appt.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {appt.status}</p>
+  <p className="text-sm text-slate-500">{new Date(appt.appointment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • <span className="capitalize font-medium">{appt.status}</span></p>
  </div>
  </div>
  <div className="flex gap-2">

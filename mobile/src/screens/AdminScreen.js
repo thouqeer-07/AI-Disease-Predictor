@@ -51,12 +51,34 @@ const AdminScreen = () => {
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch Inquiries / Applications directly from Supabase
-      const { data: inqs } = await supabase
-        .from('inquiries')
-        .select('*')
-        .eq('subject', 'doctor_application')
-        .order('created_at', { ascending: false });
+      // 1. Fetch Inquiries / Applications
+      let inqs = null;
+      try {
+        const { data } = await supabase
+          .from('inquiries')
+          .select('*')
+          .eq('subject', 'doctor_application')
+          .order('created_at', { ascending: false });
+        inqs = data;
+      } catch (e) {
+        console.warn('Direct Supabase inquiries fetch failed:', e);
+      }
+
+      if (!inqs || inqs.length === 0) {
+        try {
+          const res = await fetchApiWithFallback('/admin/applications');
+          if (res?.applications) {
+            inqs = res.applications.map(app => ({
+              id: app.id,
+              status: app.status,
+              created_at: app.created_at,
+              message: JSON.stringify(app)
+            }));
+          }
+        } catch (e) {
+          console.error('Backend applications fetch failed:', e);
+        }
+      }
 
       const parsedApps = (inqs || []).map(inq => {
         let payload = {};
@@ -68,20 +90,48 @@ const AdminScreen = () => {
       setApplications(parsedApps);
       const pendingCount = parsedApps.filter(a => a.status === 'new').length;
 
-      // 2. Fetch Patients directly from Supabase
-      const { data: patData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'patient')
-        .order('created_at', { ascending: false });
+      // 2. Fetch Patients (reads Supabase Auth + Profiles)
+      let patData = null;
+      try {
+        const res = await fetchApiWithFallback('/admin/patients');
+        if (res?.patients && res.patients.length > 0) {
+          patData = res.patients;
+        }
+      } catch (e) {
+        console.warn('Backend patients fetch failed:', e);
+      }
+
+      if (!patData || patData.length === 0) {
+        try {
+          const { data } = await supabase.from('profiles').select('*');
+          patData = (data || []).filter(p => !p.role || p.role === 'patient');
+        } catch (e) {
+          console.warn('Direct Supabase profiles fetch failed:', e);
+        }
+      }
 
       setPatients(patData || []);
 
-      // 3. Fetch Doctors directly from Supabase with DOB enrichment
-      const { data: docData } = await supabase
-        .from('doctors')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // 3. Fetch Doctors
+      let docData = null;
+      try {
+        const { data } = await supabase
+          .from('doctors')
+          .select('*')
+          .order('created_at', { ascending: false });
+        docData = data;
+      } catch (e) {
+        console.warn('Direct Supabase doctors fetch failed:', e);
+      }
+
+      if (!docData || docData.length === 0) {
+        try {
+          const res = await fetchApiWithFallback('/admin/doctors');
+          if (res?.doctors) docData = res.doctors;
+        } catch (e) {
+          console.error('Backend doctors fetch failed:', e);
+        }
+      }
 
       const { data: profDocs } = await supabase
         .from('profiles')
@@ -182,7 +232,7 @@ const AdminScreen = () => {
           style: approve ? 'default' : 'destructive',
           onPress: async () => {
             setProcessingId(appId);
-            const newStatus = approve ? 'read' : 'urgent';
+            const newStatus = 'resolved';
 
             // Optimistically update local applications state so the item immediately moves out of pending
             setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus } : a));
@@ -291,7 +341,6 @@ const AdminScreen = () => {
               const cleanEmail = targetPat?.email ? targetPat.email.trim().toLowerCase() : null;
 
               await supabase.from('profiles').delete().eq('id', id);
-              if (cleanEmail) await supabase.from('profiles').delete().ilike('email', cleanEmail);
 
               await supabase.from('emergency_contacts').delete().eq('user_id', id);
               await supabase.from('sos_logs').delete().eq('user_id', id);
@@ -357,11 +406,7 @@ const AdminScreen = () => {
                 await supabase.from('doctors').delete().ilike('email', targetEmail);
               }
 
-              // Delete from profiles table (by id and email)
               await supabase.from('profiles').delete().eq('id', id);
-              if (targetEmail) {
-                await supabase.from('profiles').delete().ilike('email', targetEmail);
-              }
 
               // Delete matching inquiry/application records
               if (targetEmail) {
@@ -632,6 +677,12 @@ const AdminScreen = () => {
                     <Text style={styles.gridCardLabel}>Height</Text>
                     <Text style={styles.gridCardVal}>{selectedPatient.height_cm ? `${selectedPatient.height_cm} cm` : 'N/A'}</Text>
                   </View>
+                  <View style={styles.gridCard}>
+                    <Text style={styles.gridCardLabel}>Registration Date</Text>
+                    <Text style={styles.gridCardVal}>
+                      {selectedPatient.applicationDate || selectedPatient.created_at ? new Date(selectedPatient.applicationDate || selectedPatient.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                    </Text>
+                  </View>
                 </View>
 
                 {(() => {
@@ -753,6 +804,12 @@ const AdminScreen = () => {
                     <Text style={styles.gridCardLabel}>Phone Number</Text>
                     <Text style={styles.gridCardVal}>{selectedDoctor.phone_number || selectedDoctor.phoneNumber || 'N/A'}</Text>
                   </View>
+                  <View style={styles.gridCard}>
+                    <Text style={styles.gridCardLabel}>Application Date</Text>
+                    <Text style={styles.gridCardVal}>
+                      {selectedDoctor.applicationDate || selectedDoctor.created_at ? new Date(selectedDoctor.applicationDate || selectedDoctor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={styles.infoBlock}>
@@ -837,9 +894,20 @@ const AdminScreen = () => {
                       <Text style={styles.gridLabel}>Date of Birth</Text>
                       <Text style={styles.gridVal}>{selectedApp.dob || selectedApp.dateOfBirth || 'N/A'}</Text>
                     </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>Gender</Text>
+                      <Text style={[styles.gridVal, { textTransform: 'capitalize' }]}>{selectedApp.gender || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.gridBox}>
+                      <Text style={styles.gridLabel}>Experience</Text>
+                      <Text style={styles.gridVal}>{selectedApp.experienceYears ? `${selectedApp.experienceYears} Yrs` : 'N/A'}</Text>
+                    </View>
                     <View style={[styles.gridBox, { width: '100%' }]}>
                       <Text style={styles.gridLabel}>Hospital / Clinic</Text>
                       <Text style={styles.gridVal}>{selectedApp.hospitalName}</Text>
+                      {selectedApp.hospitalAddress ? (
+                        <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{selectedApp.hospitalAddress}</Text>
+                      ) : null}
                     </View>
                   </View>
 

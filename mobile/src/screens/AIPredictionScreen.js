@@ -36,15 +36,94 @@ import { fetchApiWithFallback } from '../lib/api';
 const { width } = Dimensions.get('window');
 
 const CANONICAL_SYMPTOMS = [
+  // Core Dataset Symptoms
   "Blurred Vision", "Cold Hands and Feet", "Cough", "Dark Urine", "Daytime Sleepiness", 
   "Difficulty Falling Asleep", "Dizziness", "Dry Mouth", "Extreme Thirst", "Facial Pain", 
   "Fatigue", "Fever", "Frequent Urination", "Headache", "Increased Thirst", 
   "Irritability", "Nasal Congestion", "Nausea", "Pale Skin", "Reduced Sense of Smell", 
   "Runny Nose", "Sensitivity to Light", "Severe Headache", "Shortness of Breath", 
-  "Sore Throat", "Throbbing Head", "Vomiting", "Waking up frequently", "Weakness", "Weight Loss"
+  "Sore Throat", "Throbbing Head", "Vomiting", "Waking up frequently", "Weakness", "Weight Loss",
+  // Expanded Clinical Symptoms
+  "Sneezing", "Wheezing", "Loss of Taste", "Hoarseness", "Ear Pressure",
+  "Chills", "Night Sweats", "Body Aches", "Muscle Pain", "Joint Pain", "Swollen Lymph Nodes",
+  "Abdominal Pain", "Loss of Appetite", "Diarrhea", "Constipation", "Bloating",
+  "Brain Fog", "Neck Stiffness", "Scalp Sensitivity", "Chest Pain", "Rapid Heartbeat", "Fainting",
+  "Restlessness", "Anxiety", "Morning Exhaustion"
 ];
 
-const POPULAR_SYMPTOMS = ["Fever", "Headache", "Fatigue", "Cough", "Sore Throat", "Dizziness", "Nausea", "Runny Nose"];
+const POPULAR_SYMPTOMS = ["Fever", "Headache", "Fatigue", "Cough", "Sore Throat", "Nausea"];
+
+const SYMPTOM_FRIENDLY_MAP = {
+  "Diarrhea": "Loose Motion / Watery Stools",
+  "Nausea": "Feeling Sick / Vomiting Sensation",
+  "Fatigue": "Extreme Tiredness / Low Energy",
+  "Fever": "High Temperature / Chills",
+  "Cough": "Dry or Wet Cough",
+  "Runny Nose": "Excess Mucus / Nasal Discharge",
+  "Sore Throat": "Pain When Swallowing",
+  "Nasal Congestion": "Blocked Nose",
+  "Shortness of Breath": "Difficulty Breathing",
+  "Headache": "Head Pain",
+  "Severe Headache": "Intense Head Pain",
+  "Throbbing Head": "Pulsating Headache",
+  "Dizziness": "Lightheadedness / Unsteadiness",
+  "Blurred Vision": "Unclear / Hazy Sight",
+  "Cold Hands and Feet": "Chilly Extremities",
+  "Dark Urine": "Concentrated / Deep Yellow Urine",
+  "Daytime Sleepiness": "Drowsiness During Day",
+  "Difficulty Falling Asleep": "Trouble Sleeping / Insomnia",
+  "Dry Mouth": "Lack of Saliva",
+  "Extreme Thirst": "Unquenchable Thirst",
+  "Increased Thirst": "Drinking More Water Than Usual",
+  "Facial Pain": "Sinus Pain / Cheek Pressure",
+  "Frequent Urination": "Peeing Very Often",
+  "Irritability": "Mood Swings / Easily Annoyed",
+  "Pale Skin": "Loss of Normal Skin Color",
+  "Reduced Sense of Smell": "Loss of Smell / Anosmia",
+  "Sensitivity to Light": "Eye Discomfort in Light",
+  "Vomiting": "Throwing Up",
+  "Waking up frequently": "Broken Sleep",
+  "Weakness": "Lack of Physical Strength",
+  "Weight Loss": "Unintended Loss of Weight",
+  "Sneezing": "Frequent Sneezes",
+  "Wheezing": "Whistling Sound When Breathing",
+  "Loss of Taste": "Inability to Taste Food",
+  "Hoarseness": "Raspy or Scratchy Voice",
+  "Ear Pressure": "Fullness in Ears",
+  "Chills": "Cold Shivering",
+  "Night Sweats": "Excessive Sweating While Sleeping",
+  "Body Aches": "General Muscle Soreness",
+  "Muscle Pain": "Myalgia / Sore Muscles",
+  "Joint Pain": "Stiff or Aching Joints",
+  "Swollen Lymph Nodes": "Swollen Glands in Neck",
+  "Abdominal Pain": "Stomach Ache / Stomach Pain",
+  "Loss of Appetite": "Not Feeling Hungry",
+  "Constipation": "Difficulty Passing Stool",
+  "Bloating": "Swollen / Gassy Stomach",
+  "Brain Fog": "Lack of Focus / Mental Fatigue",
+  "Neck Stiffness": "Hard to Turn Neck",
+  "Scalp Sensitivity": "Tender Scalp",
+  "Chest Pain": "Tightness / Pain in Chest",
+  "Rapid Heartbeat": "Heart Palpitations",
+  "Fainting": "Blackout / Loss of Consciousness",
+  "Restlessness": "Unable to Sit Still",
+  "Anxiety": "Nervousness / Worry",
+  "Morning Exhaustion": "Waking Up Tired"
+};
+
+const getSymptomLabel = (symptom) => {
+  const friendly = SYMPTOM_FRIENDLY_MAP[symptom];
+  return friendly ? `${symptom} (${friendly})` : symptom;
+};
+
+const SYMPTOM_CATEGORY_MAP = {
+  "Cough": "Respiratory", "Runny Nose": "Respiratory", "Sore Throat": "Respiratory", "Nasal Congestion": "Respiratory", "Shortness of Breath": "Respiratory", "Sneezing": "Respiratory", "Wheezing": "Respiratory", "Loss of Taste": "Respiratory", "Hoarseness": "Respiratory", "Reduced Sense of Smell": "Respiratory",
+  "Headache": "Neurological", "Severe Headache": "Neurological", "Throbbing Head": "Neurological", "Dizziness": "Neurological", "Sensitivity to Light": "Neurological", "Facial Pain": "Neurological", "Brain Fog": "Neurological", "Neck Stiffness": "Neurological", "Scalp Sensitivity": "Neurological",
+  "Fatigue": "Systemic", "Fever": "Systemic", "Weakness": "Systemic", "Pale Skin": "Systemic", "Cold Hands and Feet": "Systemic", "Weight Loss": "Systemic", "Chills": "Systemic", "Night Sweats": "Systemic", "Body Aches": "Systemic", "Muscle Pain": "Systemic", "Joint Pain": "Systemic", "Swollen Lymph Nodes": "Systemic",
+  "Nausea": "Digestive", "Vomiting": "Digestive", "Dry Mouth": "Digestive", "Extreme Thirst": "Digestive", "Increased Thirst": "Digestive", "Frequent Urination": "Digestive", "Dark Urine": "Digestive", "Blurred Vision": "Digestive", "Abdominal Pain": "Digestive", "Loss of Appetite": "Digestive", "Diarrhea": "Digestive", "Constipation": "Digestive", "Bloating": "Digestive",
+  "Chest Pain": "Urgent", "Rapid Heartbeat": "Urgent", "Fainting": "Urgent",
+  "Daytime Sleepiness": "Sleep & Mood", "Difficulty Falling Asleep": "Sleep & Mood", "Waking up frequently": "Sleep & Mood", "Irritability": "Sleep & Mood", "Restlessness": "Sleep & Mood", "Anxiety": "Sleep & Mood", "Morning Exhaustion": "Sleep & Mood"
+};
 
 const AIPredictionScreen = () => {
   const { user } = useSelector((state) => state.auth);
@@ -120,6 +199,11 @@ const AIPredictionScreen = () => {
 
     if (combinedList.length === 0) return;
 
+    if (selectedSymptoms.length === 1 && !customText.trim()) {
+      Alert.alert('Notes Required', 'When selecting only one symptom, providing additional notes/details is required for an accurate AI prediction.');
+      return;
+    }
+
     const symptomsQuery = combinedList.join(', ');
 
     setLoading(true);
@@ -131,11 +215,16 @@ const AIPredictionScreen = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           symptoms: symptomsQuery,
-          behavioralData: behavioralData
+          behavioralData: behavioralData,
+          userId: user?.id,
+          userName: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0],
+          userEmail: user?.email,
+          notes: customText.trim() || null
         }),
       });
 
       setResult(data);
+
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
@@ -153,9 +242,11 @@ const AIPredictionScreen = () => {
     sleep: (behavioralData.reduce((acc, d) => acc + (d.sleep_hours || 0), 0) / (behavioralData.length || 1)).toFixed(1)
   };
 
-  const filteredOptions = CANONICAL_SYMPTOMS.filter(s => 
-    s.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredOptions = CANONICAL_SYMPTOMS.filter(s => {
+    const term = searchTerm.toLowerCase();
+    const label = getSymptomLabel(s).toLowerCase();
+    return s.toLowerCase().includes(term) || label.includes(term);
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -229,7 +320,7 @@ const AIPredictionScreen = () => {
                   style={styles.chip}
                   onPress={() => removeSymptom(symptom)}
                 >
-                  <Text style={styles.chipText}>{symptom}</Text>
+                  <Text style={styles.chipText}>{getSymptomLabel(symptom)}</Text>
                   <X size={14} color="#1d4ed8" />
                 </TouchableOpacity>
               ))}
@@ -262,7 +353,7 @@ const AIPredictionScreen = () => {
                   onPress={() => toggleSymptom(symptom)}
                 >
                   <Text style={[styles.quickTagText, isSelected && styles.quickTagTextSelected]}>
-                    {isSelected ? '✓ ' : '+ '}{symptom}
+                    {isSelected ? '✓ ' : '+ '}{getSymptomLabel(symptom)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -270,13 +361,28 @@ const AIPredictionScreen = () => {
           </ScrollView>
 
           {/* Custom Notes */}
-          <Text style={styles.quickLabel}>Additional Notes (Optional):</Text>
+          <Text style={styles.quickLabel}>
+            Additional Notes {selectedSymptoms.length === 1 ? '(Required for 1 symptom)' : '(Optional)'}:
+          </Text>
+          {selectedSymptoms.length === 1 && (
+            <View style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a', borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 8, flexDirection: 'row', alignItems: 'center' }}>
+              <AlertCircle size={16} color="#d97706" style={{ marginRight: 8 }} />
+              <Text style={{ flex: 1, fontSize: 12, color: '#92400e', fontWeight: '600' }}>
+                Since only 1 symptom is selected, please describe additional notes (onset, duration, severity) to ensure accurate AI diagnosis.
+              </Text>
+            </View>
+          )}
           <TextInput
             multiline
             numberOfLines={3}
-            placeholder="e.g. Symptoms started 2 days ago..."
+            placeholder={selectedSymptoms.length === 1 
+              ? "REQUIRED: Describe your symptom (e.g. Started 2 days ago, high temp 102F)..." 
+              : "e.g. Symptoms started 2 days ago..."}
             placeholderTextColor="#94a3b8"
-            style={styles.customTextInput}
+            style={[
+              styles.customTextInput,
+              selectedSymptoms.length === 1 && !customText.trim() && { borderColor: '#fca5a5', backgroundColor: '#fff5f5' }
+            ]}
             value={customText}
             onChangeText={setCustomText}
           />
@@ -295,9 +401,9 @@ const AIPredictionScreen = () => {
             <TouchableOpacity 
               style={[
                 styles.predictBtn, 
-                (selectedSymptoms.length === 0 && !customText.trim() || loading) && styles.predictBtnDisabled
+                ((selectedSymptoms.length === 0 && !customText.trim()) || (selectedSymptoms.length === 1 && !customText.trim()) || loading) && styles.predictBtnDisabled
               ]}
-              disabled={(selectedSymptoms.length === 0 && !customText.trim()) || loading}
+              disabled={(selectedSymptoms.length === 0 && !customText.trim()) || (selectedSymptoms.length === 1 && !customText.trim()) || loading}
               onPress={handlePredict}
             >
               {loading ? (
@@ -324,7 +430,6 @@ const AIPredictionScreen = () => {
                   </View>
                   <Text style={[styles.conditionName, i === 0 && styles.conditionNamePrimary]}>{p.condition}</Text>
                 </View>
-                <Text style={[styles.probability, i === 0 && styles.probabilityPrimary]}>{p.probability}</Text>
               </View>
             ))}
 
@@ -383,7 +488,7 @@ const AIPredictionScreen = () => {
               <Search size={18} color="#64748b" style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.modalSearchInput}
-                placeholder="Search symptoms (e.g. Fever, Cough)..."
+                placeholder="Search symptoms (e.g. Loose Motion, Fever)..."
                 placeholderTextColor="#94a3b8"
                 value={searchTerm}
                 onChangeText={setSearchTerm}
@@ -400,14 +505,27 @@ const AIPredictionScreen = () => {
               keyExtractor={(item) => item}
               renderItem={({ item }) => {
                 const isSelected = selectedSymptoms.includes(item);
+                const category = SYMPTOM_CATEGORY_MAP[item] || 'Clinical';
                 return (
                   <TouchableOpacity
                     style={[styles.modalItem, isSelected && styles.modalItemSelected]}
                     onPress={() => toggleSymptom(item)}
                   >
-                    <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                      {item}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
+                        {getSymptomLabel(item)}
+                      </Text>
+                      <View style={[
+                        styles.catBadge,
+                        category === 'Urgent' && styles.catUrgent,
+                        category === 'Respiratory' && styles.catResp,
+                        category === 'Neurological' && styles.catNeuro,
+                        category === 'Digestive' && styles.catDig,
+                        category === 'Sleep & Mood' && styles.catSleep
+                      ]}>
+                        <Text style={styles.catBadgeText}>{category}</Text>
+                      </View>
+                    </View>
                     {isSelected ? (
                       <CheckCircle2 size={20} color="#1d4ed8" />
                     ) : (
@@ -501,6 +619,13 @@ const styles = StyleSheet.create({
   modalItemSelected: { backgroundColor: '#f0f9ff' },
   modalItemText: { fontSize: 15, fontWeight: '600', color: '#334155' },
   modalItemTextSelected: { color: '#1d4ed8', fontWeight: 'bold' },
+  catBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#f1f5f9' },
+  catBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#475569' },
+  catUrgent: { backgroundColor: '#ffe4e6' },
+  catResp: { backgroundColor: '#e0f2fe' },
+  catNeuro: { backgroundColor: '#f3e8ff' },
+  catDig: { backgroundColor: '#fef3c7' },
+  catSleep: { backgroundColor: '#e0e7ff' },
   modalDoneBtn: { backgroundColor: '#1d4ed8', height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   modalDoneBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

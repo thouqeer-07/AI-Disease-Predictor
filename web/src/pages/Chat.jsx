@@ -161,7 +161,7 @@ const Chat = () => {
         table: 'messages',
         filter: `appointment_id=eq.${appointmentId}` 
       }, (payload) => {
-        setMessages(prev => [...prev, payload.new]);
+        setMessages(prev => prev.some(m => m.id === payload.new.id) ? prev : [...prev, payload.new]);
       })
       .subscribe();
 
@@ -189,23 +189,35 @@ const Chat = () => {
 
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
-    if (!newMessage.trim() || sending) return;
+    const contentText = newMessage.trim();
+    if (!contentText || sending) return;
 
     setSending(true);
+    setNewMessage('');
     const receiverId = user.id === appointment.user_id ? appointment.doctor_id : appointment.user_id;
 
     try {
-      const { error } = await supabase.from('messages').insert([{
+      const { data, error } = await supabase.from('messages').insert([{
         appointment_id: appointmentId,
         sender_id: user.id,
         receiver_id: receiverId,
-        content: newMessage.trim()
-      }]);
+        content: contentText
+      }]).select();
 
       if (error) throw error;
-      setNewMessage('');
+      const insertedMsg = (data && data[0]) ? data[0] : {
+        id: `temp_${Date.now()}`,
+        appointment_id: appointmentId,
+        sender_id: user.id,
+        receiver_id: receiverId,
+        content: contentText,
+        created_at: new Date().toISOString()
+      };
+
+      setMessages(prev => prev.some(m => m.id === insertedMsg.id) ? prev : [...prev, insertedMsg]);
     } catch (err) {
       console.error('Send Error:', err);
+      setNewMessage(contentText);
     } finally {
       setSending(false);
     }
@@ -237,14 +249,18 @@ const Chat = () => {
       const formattedDateTime = combinedDateTime.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
       const systemMessageContent = `📅 Scheduled a ${type} Call for ${formattedDateTime}`;
       
-      const { error: msgError } = await supabase.from('messages').insert([{
+      const { data: msgData, error: msgError } = await supabase.from('messages').insert([{
         appointment_id: appointmentId,
         sender_id: user.id,
         receiver_id: receiverId,
         content: systemMessageContent
-      }]);
+      }]).select();
 
       if (msgError) throw msgError;
+
+      if (msgData && msgData[0]) {
+        setMessages(prev => prev.some(m => m.id === msgData[0].id) ? prev : [...prev, msgData[0]]);
+      }
 
       // Update local state
       setAppointment(prev => ({
