@@ -1,0 +1,38 @@
+name: 300 API Unit Tests Execution
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  api-unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install API Unit Test Dependencies
+        run: |
+          cd collabroom-tests/api-unit
+          npm ci || npm install
+
+      - name: Execute 300 API Unit Test Cases
+        run: |
+          cd collabroom-tests/api-unit
+          npm test
+
+      - name: Upload Excel API Unit Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-unit-report
+          path: collabroom-tests/reports/api-unit-report.xlsx
+          retention-days: 14

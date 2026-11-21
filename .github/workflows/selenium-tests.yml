@@ -1,0 +1,64 @@
+name: 300 Selenium End-to-End Tests Execution
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  selenium-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Google Chrome Headless
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl unzip libxi6 libnss3
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install Web App Dependencies
+        run: |
+          cd web
+          npm ci || npm install
+
+      - name: Start Vite Web App Server on Port 8081
+        run: |
+          cd web
+          npm run dev -- --port 8081 --host &
+          echo "Waiting for web dev server on port 8081..."
+          until curl -s http://localhost:8081 > /dev/null; do
+            sleep 2
+          done
+          echo "Web server is ready on http://localhost:8081"
+
+      - name: Install Selenium Test Runner Dependencies
+        run: |
+          cd collabroom-tests/selenium
+          npm ci || npm install
+
+      - name: Execute 300 Selenium Test Cases
+        run: |
+          cd collabroom-tests/selenium
+          npm test
+
+      - name: Upload Excel Execution Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-test-report
+          path: collabroom-tests/reports/selenium-report.xlsx
+          retention-days: 14
