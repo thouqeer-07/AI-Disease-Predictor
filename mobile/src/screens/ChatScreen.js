@@ -12,7 +12,8 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  } from 'react-native';
+  Keyboard
+} from 'react-native';
 import { Send, Bot, User as UserIcon, Plus, Clock, Loader2, Paperclip, FileText, X, CheckCircle } from 'lucide-react-native';
 import { useSelector } from 'react-redux';
 import * as DocumentPicker from 'expo-document-picker';
@@ -42,8 +43,26 @@ const ChatScreen = () => {
   const [uploading, setUploading] = useState(false);
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [activeDocument, setActiveDocument] = useState(null);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   const scrollViewRef = useRef(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardOffset(Platform.OS === 'ios' ? e.endCoordinates.height - 20 : e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleAttachPdf = async () => {
     try {
@@ -274,17 +293,19 @@ const ChatScreen = () => {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const currentMessages = messages;
+    const updatedMessages = [...currentMessages, userMessage];
+
+    setMessages(updatedMessages);
     setLoading(true);
 
-    try {
-      if (user) {
-        await supabase.from('chat_history').insert([
-          { user_id: user.id, session_id: targetSid, role: 'user', content: userMsgText }
-        ]);
-        await loadHistory(false);
-      }
+    if (user) {
+      supabase.from('chat_history').insert([
+        { user_id: user.id, session_id: targetSid, role: 'user', content: userMsgText }
+      ]).then(() => loadHistory(false)).catch(err => console.error("Error saving user chat history:", err));
+    }
 
+    try {
       // Post to AI backend chat endpoint via fallback API client
       const data = await fetchApiWithFallback('/ai/chat', {
         method: 'POST',
@@ -292,7 +313,7 @@ const ChatScreen = () => {
         body: JSON.stringify({ 
           message: userMsgText,
           documentId: activeDocument?.id,
-          history: messages.filter(m => !m.isGreeting && m.content).map(m => ({
+          history: updatedMessages.filter(m => !m.isGreeting && m.content).map(m => ({
             role: m.role === 'user' ? 'user' : 'model',
             parts: [{ text: m.content }]
           }))
@@ -301,19 +322,18 @@ const ChatScreen = () => {
 
       const botResponse = data.response || "I'm sorry, I couldn't process that query.";
 
-      if (user) {
-        await supabase.from('chat_history').insert([
-          { user_id: user.id, session_id: targetSid, role: 'bot', content: botResponse }
-        ]);
-        await loadHistory(false);
-      }
-
       const botMessage = {
         role: 'bot',
         content: botResponse,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, botMessage]);
+
+      if (user) {
+        supabase.from('chat_history').insert([
+          { user_id: user.id, session_id: targetSid, role: 'bot', content: botResponse }
+        ]).then(() => loadHistory(false)).catch(err => console.error("Error saving bot chat history:", err));
+      }
 
     } catch (error) {
       console.error('Chat error:', error);
@@ -329,11 +349,7 @@ const ChatScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 90}
-      >
+      <View style={{ flex: 1, paddingBottom: keyboardOffset }}>
         {/* Top History Bar */}
         <View style={styles.topBar}>
           <TouchableOpacity style={styles.newChatBtn} onPress={startNewChat}>
@@ -449,7 +465,7 @@ const ChatScreen = () => {
             <Send size={18} color="#fff" />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 };

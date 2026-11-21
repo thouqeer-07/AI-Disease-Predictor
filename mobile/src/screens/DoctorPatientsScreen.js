@@ -33,14 +33,31 @@ const DoctorPatientsScreen = ({ navigation }) => {
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: rawAppts, error } = await supabase
         .from('appointments')
-        .select('*, profiles:user_id(full_name, email, phone_number)')
+        .select('*')
         .eq('doctor_id', user.id)
         .order('appointment_date', { ascending: false });
 
       if (error) throw error;
-      setAppointments(data || []);
+
+      let mergedAppts = rawAppts || [];
+      const userIds = [...new Set(mergedAppts.map(a => a.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('id, full_name, phone_number')
+          .in('id', userIds);
+        
+        mergedAppts = mergedAppts.map(a => {
+          const p = profs?.find(prof => prof.id === a.user_id);
+          return {
+            ...a,
+            profiles: p ? { full_name: p.full_name, phone_number: p.phone_number } : { full_name: a.patient_name || 'Patient' }
+          };
+        });
+      }
+      setAppointments(mergedAppts);
     } catch (err) {
       console.error('Error fetching patients:', err);
     } finally {
@@ -60,6 +77,14 @@ const DoctorPatientsScreen = ({ navigation }) => {
     const patientId = appt.user_id;
 
     try {
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', patientId).maybeSingle();
+      if (prof) {
+        setSelectedAppt(prev => ({
+          ...prev,
+          patientProfile: prof
+        }));
+      }
+
       // 1. Fetch Patient 7-Day Metrics
       const { data: metrics } = await supabase
         .from('health_metrics')
@@ -156,7 +181,7 @@ const DoctorPatientsScreen = ({ navigation }) => {
                   <View style={styles.info}>
                     <Text style={styles.name}>{name}</Text>
                     <Text style={styles.date}>
-                      {activeTab === 'active' ? 'Next appt:' : 'Last visit:'} {new Date(appt.appointment_date).toLocaleDateString()}
+                      {activeTab === 'active' ? 'Appt Date:' : 'Visit Date:'} {new Date(appt.appointment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                     </Text>
                   </View>
                   <TouchableOpacity 

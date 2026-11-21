@@ -14,15 +14,32 @@ const ViewScheduleModal = ({ isOpen, onClose, doctorId }) => {
     if (!doctorId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: rawAppts, error } = await supabase
         .from('appointments')
-        .select('*, profiles:user_id(full_name)')
+        .select('*')
         .eq('doctor_id', doctorId)
         .in('status', ['accepted', 'scheduled'])
         .order('appointment_date', { ascending: true });
 
       if (error) throw error;
-      setAppointments(data || []);
+
+      let mergedAppts = rawAppts || [];
+      const userIds = [...new Set(mergedAppts.map(a => a.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds);
+        
+        mergedAppts = mergedAppts.map(a => {
+          const p = profs?.find(prof => prof.id === a.user_id);
+          return {
+            ...a,
+            profiles: p ? { full_name: p.full_name } : { full_name: a.patient_name || 'Patient' }
+          };
+        });
+      }
+      setAppointments(mergedAppts);
     } catch (err) {
       console.error('Error fetching calendar appointments:', err);
     } finally {

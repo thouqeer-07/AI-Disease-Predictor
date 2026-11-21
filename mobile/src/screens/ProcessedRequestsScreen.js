@@ -127,7 +127,7 @@ const ProcessedRequestsScreen = () => {
   };
 
   const filteredRecords = records.filter(rec => {
-    const isApproved = rec.status === 'read';
+    const isApproved = rec.status === 'resolved' || rec.status === 'read';
     const isRejected = rec.status === 'urgent' || rec.status === 'rejected';
 
     if (filterStatus === 'approved' && !isApproved) return false;
@@ -158,8 +158,8 @@ const ProcessedRequestsScreen = () => {
         <View style={styles.filterRow}>
           {[
             { id: 'all', label: `All (${records.length})` },
-            { id: 'approved', label: `Approved (${records.filter(r => r.status === 'read').length})` },
-            { id: 'rejected', label: `Rejected (${records.filter(r => r.status !== 'read').length})` }
+            { id: 'approved', label: `Approved (${records.filter(r => r.status === 'resolved' || r.status === 'read').length})` },
+            { id: 'rejected', label: `Rejected (${records.filter(r => r.status !== 'resolved' && r.status !== 'read').length})` }
           ].map(f => (
             <TouchableOpacity
               key={f.id}
@@ -194,7 +194,7 @@ const ProcessedRequestsScreen = () => {
           <ActivityIndicator size="large" color="#1d4ed8" style={{ marginVertical: 40 }} />
         ) : filteredRecords.length > 0 ? (
           filteredRecords.map(item => {
-            const isApproved = item.status === 'read';
+            const isApproved = item.status === 'resolved' || item.status === 'read';
             return (
               <View key={item.id} style={styles.recordCard}>
                 <TouchableOpacity 
@@ -286,7 +286,7 @@ const ProcessedRequestsScreen = () => {
                     <Text style={styles.modalDoctorName}>{selectedRecord.fullName}</Text>
                     <Text style={styles.modalSpecialty}>{selectedRecord.specialty}</Text>
                     <View style={{ flexDirection: 'row', marginTop: 6 }}>
-                      {selectedRecord.status === 'read' ? (
+                      {selectedRecord.status === 'resolved' || selectedRecord.status === 'read' ? (
                         <View style={[styles.statusBadge, styles.statusBadgeApproved]}>
                           <Check size={14} color="#15803d" />
                           <Text style={styles.statusApprovedText}>Approved</Text>

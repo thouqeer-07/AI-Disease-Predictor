@@ -25,10 +25,19 @@ const PatientOnboardingScreen = ({ navigation }) => {
 
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const savedDob = user?.user_metadata?.dob || '';
+  let autoAge = user?.user_metadata?.age ? String(user.user_metadata.age) : '';
+  if ((!autoAge || autoAge === '0') && savedDob) {
+    const bYear = new Date(savedDob).getFullYear();
+    if (!isNaN(bYear) && bYear > 1900) {
+      autoAge = String(new Date().getFullYear() - bYear);
+    }
+  }
+
   const [formData, setFormData] = useState({
-    gender: user?.user_metadata?.gender || 'male',
-    dob: user?.user_metadata?.dob || '',
-    age: user?.user_metadata?.age ? String(user.user_metadata.age) : '',
+    gender: user?.user_metadata?.gender || '',
+    dob: savedDob,
+    age: autoAge,
     weight: user?.user_metadata?.weight_kg ? String(user.user_metadata.weight_kg) : '',
     height: user?.user_metadata?.height_cm ? String(user.user_metadata.height_cm) : '',
     bloodGroup: user?.user_metadata?.blood_group || 'O+',
@@ -123,34 +132,59 @@ const PatientOnboardingScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.formCard}>
-            {/* Gender Selection */}
-            <Text style={styles.label}>Gender</Text>
-            <View style={styles.genderRow}>
-              {genders.map((g) => (
+            {/* Pre-filled Account Registration Details Card */}
+            {(formData.gender || formData.dob) ? (
+              <View style={{ backgroundColor: '#eff6ff', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#bfdbfe', marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#1d4ed8', uppercase: true }}>Saved Registration Details</Text>
+                  <View style={{ backgroundColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#166534' }}>✓ Stored in DB</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#0f172a', marginTop: 4 }}>
+                  {formData.gender ? `Gender: ${formData.gender.charAt(0).toUpperCase() + formData.gender.slice(1)}` : ''}
+                  {formData.gender && formData.dob ? ' • ' : ''}
+                  {formData.dob ? `DOB: ${formData.dob}` : ''}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Gender Selection (only if not set during registration) */}
+            {!formData.gender && (
+              <>
+                <Text style={styles.label}>Gender</Text>
+                <View style={styles.genderRow}>
+                  {genders.map((g) => (
+                    <TouchableOpacity
+                      key={g}
+                      style={[styles.genderBtn, formData.gender === g && styles.genderBtnActive]}
+                      onPress={() => handleInputChange('gender', g)}
+                    >
+                      <Text style={[styles.genderText, formData.gender === g && styles.genderTextActive]}>
+                        {g.charAt(0).toUpperCase() + g.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Date of Birth (only if not set during registration) */}
+            {!formData.dob && (
+              <>
+                <Text style={styles.label}>Date of Birth</Text>
                 <TouchableOpacity
-                  key={g}
-                  style={[styles.genderBtn, formData.gender === g && styles.genderBtnActive]}
-                  onPress={() => handleInputChange('gender', g)}
+                  style={styles.inputBox}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.genderText, formData.gender === g && styles.genderTextActive]}>
-                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                  <Calendar size={20} color="#1d4ed8" style={styles.icon} />
+                  <Text style={[styles.input, { paddingVertical: 12, color: formData.dob ? '#0f172a' : '#94a3b8', fontWeight: formData.dob ? '700' : '400' }]}>
+                    {formData.dob ? `DOB: ${formData.dob}` : 'Select Date of Birth (DD-MM-YYYY)'}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Date of Birth */}
-            <Text style={styles.label}>Date of Birth</Text>
-            <TouchableOpacity
-              style={styles.inputBox}
-              onPress={() => setShowDatePicker(true)}
-              activeOpacity={0.8}
-            >
-              <Calendar size={20} color="#1d4ed8" style={styles.icon} />
-              <Text style={[styles.input, { paddingVertical: 12, color: formData.dob ? '#0f172a' : '#94a3b8', fontWeight: formData.dob ? '700' : '400' }]}>
-                {formData.dob ? `DOB: ${formData.dob}` : 'Select Date of Birth (DD-MM-YYYY)'}
-              </Text>
-            </TouchableOpacity>
+              </>
+            )}
 
             {/* Age & Blood Group */}
             <View style={styles.row}>

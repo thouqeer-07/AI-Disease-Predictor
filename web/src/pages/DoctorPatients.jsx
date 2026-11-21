@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { supabase } from '../lib/supabase';
+import { fetchApiWithFallback } from '../lib/api';
 
 const DoctorPatients = () => {
   const { user } = useSelector((state) => state.auth);
@@ -13,19 +14,60 @@ const DoctorPatients = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // active / completed
+  const [selectedPatientModal, setSelectedPatientModal] = useState(null);
+
+  const handleViewPatientDetails = async (appt) => {
+    try {
+      const data = await fetchApiWithFallback(`/doctors/patient-details/${appt.user_id}`);
+      setSelectedPatientModal({
+        ...data,
+        appointment_date: appt.appointment_date,
+        appointmentNotes: appt.notes
+      });
+    } catch (e) {
+      setSelectedPatientModal({
+        full_name: appt.profiles?.full_name || appt.patient_name || 'Patient',
+        appointment_date: appt.appointment_date,
+        appointmentNotes: appt.notes
+      });
+    }
+  };
 
   useEffect(() => {
     const fetchAppointments = async () => {
       if (!user) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('appointments')
-          .select('*, profiles:user_id(full_name, email, phone_number)')
-          .eq('doctor_id', user.id)
-          .order('appointment_date', { ascending: false });
+        const res = await fetchApiWithFallback(`/doctors/my-appointments?doctorId=${user.id}`);
+        if (res && res.appointments) {
+          setAppointments(res.appointments);
+        } else {
+          const { data: rawAppts, error } = await supabase
+            .from('appointments')
+            .select('*')
+            .eq('doctor_id', user.id)
+            .order('appointment_date', { ascending: false });
 
-        if (data) setAppointments(data);
+          if (error) throw error;
+
+          let mergedAppts = rawAppts || [];
+          const userIds = [...new Set(mergedAppts.map(a => a.user_id).filter(Boolean))];
+          if (userIds.length > 0) {
+            const { data: profs } = await supabase
+              .from('profiles')
+              .select('id, full_name, phone_number')
+              .in('id', userIds);
+            
+            mergedAppts = mergedAppts.map(a => {
+              const p = profs?.find(prof => prof.id === a.user_id);
+              return {
+                ...a,
+                profiles: p ? { full_name: p.full_name, phone_number: p.phone_number } : { full_name: a.patient_name || 'Patient' }
+              };
+            });
+          }
+          setAppointments(mergedAppts);
+        }
       } catch (err) {
         console.error('Error fetching appointments:', err);
       } finally {
@@ -156,42 +198,118 @@ const DoctorPatients = () => {
                 <div className="space-y-4 mt-auto">
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     <Calendar className="w-4 h-4 text-slate-400" />
-                    <span>Appt: {appt.appointment_date ? new Date(appt.appointment_date).toLocaleDateString() : 'N/A'} at {appt.appointment_date ? new Date(appt.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                    <span>Appt Date: {appt.appointment_date ? new Date(appt.appointment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</span>
                   </div>
 
-                  {activeTab === 'active' ? (
-                    <Button 
-                      variant="primary" 
-                      className="w-full rounded-xl group-hover:bg-primary group-hover:text-white transition-all gap-2 py-3 font-bold"
-                      onClick={() => navigate(`/chat/${appt.id}`)}
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      Chat Now
-                      <ArrowRight className="w-4 h-4 ml-auto" />
-                    </Button>
-                  ) : (
+                  <div className="flex gap-2">
                     <Button 
                       variant="outline" 
-                      className="w-full rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all gap-2 py-3 border-slate-200 dark:border-zinc-700 font-bold"
-                      onClick={() => navigate(`/chat/${appt.id}`)}
+                      size="sm" 
+                      className="w-full rounded-xl text-xs font-bold border-slate-200 text-slate-700 hover:bg-slate-100"
+                      onClick={() => handleViewPatientDetails(appt)}
                     >
-                      <Clock className="w-4 h-4" />
-                      View Chat History
-                      <ArrowRight className="w-4 h-4 ml-auto" />
+                      View Profile
                     </Button>
-                  )}
+                    {activeTab === 'active' && (
+                      <Button 
+                        variant="primary" 
+                        size="sm" 
+                        className="w-full rounded-xl shadow-md gap-2 text-xs font-bold"
+                        onClick={() => navigate(`/chat/${appt.id}`)}
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        Chat
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </Card>
             );
           })
         ) : (
-          <div className="col-span-full py-20 text-center bg-white dark:bg-zinc-900 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-[2.5rem]">
-            <User className="w-16 h-16 mx-auto mb-4 text-slate-300 dark:text-zinc-700" />
-            <p className="font-bold text-slate-600 dark:text-slate-400">No patients found</p>
-            <p className="text-sm text-slate-400">There are no consultations matching this filter.</p>
+          <div className="col-span-full p-16 text-center text-slate-400">
+            <User className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p className="font-semibold text-slate-600 dark:text-slate-300">No {activeTab} patient records found</p>
           </div>
         )}
       </div>
+
+      {selectedPatientModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-slate-100 dark:border-zinc-800">
+            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-950">
+              <h3 className="font-bold text-xl text-slate-900 dark:text-white">Patient Profile</h3>
+              <button 
+                onClick={() => setSelectedPatientModal(null)}
+                className="w-8 h-8 rounded-lg hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-500 flex items-center justify-center font-bold text-lg"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="flex items-center gap-4 border-b border-slate-100 dark:border-zinc-800 pb-4">
+                <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xl font-bold">
+                  {selectedPatientModal.full_name ? selectedPatientModal.full_name.charAt(0) : 'P'}
+                </div>
+                <div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white">{selectedPatientModal.full_name}</h4>
+                  <p className="text-sm text-slate-500">{selectedPatientModal.email} • {selectedPatientModal.phone_number}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date of Birth</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{selectedPatientModal.dob || 'Not Specified'}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Age</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{selectedPatientModal.age || 'N/A'}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gender</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm capitalize">{selectedPatientModal.gender || 'Not Specified'}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Blood Group</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{selectedPatientModal.blood_group || 'N/A'}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Weight</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{selectedPatientModal.weight_kg ? `${selectedPatientModal.weight_kg} kg` : 'N/A'}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Height</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{selectedPatientModal.height_cm ? `${selectedPatientModal.height_cm} cm` : 'N/A'}</p>
+                </div>
+                <div className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Appointment Date</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                    {selectedPatientModal.appointment_date ? new Date(selectedPatientModal.appointment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                  </p>
+                </div>
+                {selectedPatientModal.diseases && (
+                  <div className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Diseases / Conditions</p>
+                    <p className="text-sm text-slate-800 dark:text-slate-200 font-medium">{selectedPatientModal.diseases}</p>
+                  </div>
+                )}
+                {selectedPatientModal.drugs && (
+                  <div className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Current Medications</p>
+                    <p className="text-sm text-slate-800 dark:text-slate-200 font-medium">{selectedPatientModal.drugs}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
+              <Button onClick={() => setSelectedPatientModal(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

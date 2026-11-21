@@ -52,18 +52,53 @@ class DiseasePredictor:
         """
         Task 2: RandomForest Inference Function
         """
-        if not symptoms_list or len(symptoms_list) == 0:
+        cleaned_items = []
+        for item in symptoms_list:
+            if isinstance(item, str) and item.strip():
+                for p in item.split(','):
+                    if p.strip():
+                        cleaned_items.append(p.strip())
+
+        if not cleaned_items:
             raise ValueError("symptoms_list cannot be empty. At least one symptom is required.")
 
-        # Clean and split symptoms list
-        raw_tokens = []
-        for item in symptoms_list:
-            if isinstance(item, str):
-                parts = [p.strip().lower() for p in item.split(',') if p.strip()]
-                raw_tokens.extend(parts)
+        # Alias mapping for expanded symptoms to canonical ML vocabulary
+        SYMPTOM_ALIASES = {
+            "chills": "fever",
+            "night sweats": "fever",
+            "body aches": "weakness",
+            "muscle pain": "weakness",
+            "joint pain": "weakness",
+            "swollen lymph nodes": "sore throat",
+            "brain fog": "daytime sleepiness",
+            "neck stiffness": "headache",
+            "scalp sensitivity": "headache",
+            "sneezing": "runny nose",
+            "wheezing": "shortness of breath",
+            "loss of taste": "reduced sense of smell",
+            "hoarseness": "sore throat",
+            "ear pressure": "facial pain",
+            "abdominal pain": "nausea",
+            "loss of appetite": "nausea",
+            "diarrhea": "vomiting",
+            "constipation": "nausea",
+            "bloating": "nausea",
+            "chest tightness": "shortness of breath",
+            "rapid heartbeat": "dizziness",
+            "restlessness": "irritability",
+            "anxiety": "irritability",
+            "morning exhaustion": "daytime sleepiness"
+        }
 
         # Parse input symptoms (handles list of strings, comma-separated, or free text)
-        input_text = " ".join([item for item in symptoms_list if isinstance(item, str)])
+        expanded_tokens = []
+        for p in cleaned_items:
+            p_lower = p.lower()
+            expanded_tokens.append(p_lower)
+            if p_lower in SYMPTOM_ALIASES:
+                expanded_tokens.append(SYMPTOM_ALIASES[p_lower])
+
+        input_text = " ".join(expanded_tokens)
         input_text_lower = input_text.lower()
 
         recognized_symptoms = set()
@@ -78,11 +113,14 @@ class DiseasePredictor:
                 # Replace matched term to avoid duplicate sub-matching
                 remaining_text = remaining_text.replace(term, " ")
 
-        # Collect unrecognized terms from remaining non-empty words/phrases
-        import re
-        words = [w for w in re.split(r'[,;.\s]+', remaining_text) if len(w) > 2 and w not in ["have", "with", "from", "since", "this", "that", "and", "also", "some", "very", "feel", "feeling"]]
-        
-        unrecognized_symptoms = list(set(words))
+        # Collect unrecognized terms/phrases from original cleaned input
+        unrecognized_symptoms = []
+        for p in cleaned_items:
+            p_lower = p.lower()
+            is_rec = any(term in p_lower for term in recognized_symptoms)
+            if not is_rec and p_lower not in self.vocab_lower and p_lower not in SYMPTOM_ALIASES:
+                if p_lower not in unrecognized_symptoms:
+                    unrecognized_symptoms.append(p_lower)
         recognized_symptoms = list(recognized_symptoms)
 
         # Multi-hot encoding for recognized symptoms

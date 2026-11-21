@@ -33,6 +33,7 @@ const MedicineItem = ({ medicine, onUpdate, onEdit, onDelete }) => {
  .update({ stock_count: Math.max(0, medicine.stock_count - 1) })
  .eq('id', medicine.id);
 
+ window.dispatchEvent(new CustomEvent('medications-updated'));
  onUpdate();
  } catch (error) {
  console.error('Error marking as taken:', error.message);
@@ -59,13 +60,13 @@ const MedicineItem = ({ medicine, onUpdate, onEdit, onDelete }) => {
  <div className="flex items-center gap-3">
   <button 
     onClick={() => onEdit(medicine)} 
-    className="p-2 rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+    className="p-2 rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors cursor-pointer"
   >
     <Edit2 className="w-5 h-5" />
   </button>
   <button 
     onClick={() => onDelete(medicine.id)} 
-    className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors mr-2"
+    className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors mr-2 cursor-pointer"
   >
     <Trash2 className="w-5 h-5" />
   </button>
@@ -78,7 +79,7 @@ const MedicineItem = ({ medicine, onUpdate, onEdit, onDelete }) => {
  <Button 
  variant="primary" 
  size="sm" 
- className="rounded-xl px-6 h-11 text-xs font-bold shadow-md"
+ className="rounded-xl px-6 h-11 text-xs font-bold shadow-md cursor-pointer"
  onClick={handleMarkAsTaken}
  disabled={loading}
  >
@@ -151,6 +152,7 @@ const MedicineReminder = () => {
      try {
        const { error } = await supabase.from('medications').delete().eq('id', id);
        if (error) throw error;
+       window.dispatchEvent(new CustomEvent('medications-updated'));
        fetchMedications();
      } catch (error) {
        console.error("Error deleting medication:", error.message);
@@ -172,7 +174,7 @@ const MedicineReminder = () => {
  <h1 className="text-5xl font-black text-slate-900 tracking-tight">Medicine Reminders</h1>
  <p className="text-lg text-slate-500 mt-3 font-medium">Your personalized medication schedule and health streaks.</p>
  </div>
- <Button className="rounded-xl h-14 px-8 font-black gap-3 shadow-md" onClick={() => {
+ <Button className="rounded-xl h-14 px-8 font-black gap-3 shadow-md cursor-pointer" onClick={() => {
    setEditingMed(null);
    setIsModalOpen(true);
  }}>
@@ -282,6 +284,7 @@ const MedicineReminder = () => {
                             .update({ stock_count: med.stock_count + 30 })
                             .eq('id', med.id);
                           if (error) throw error;
+                          window.dispatchEvent(new CustomEvent('medications-updated'));
                           fetchMedications();
                         } catch (err) {
                           console.error('Error adding stock:', err.message);

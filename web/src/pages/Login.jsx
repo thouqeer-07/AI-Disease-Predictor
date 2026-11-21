@@ -224,8 +224,11 @@ const Login = () => {
 
       if (signInError) throw signInError;
 
-      // Restrict login to verified users only
-      if (data.user && (!data.user.email_confirmed_at || data.user.user_metadata?.aura_verified === false)) {
+      // Restrict OTP verification check to Patient accounts only (Doctors and Admins are pre-verified)
+      const userRole = data.user?.user_metadata?.role;
+      const isDoctorOrAdmin = userRole === 'doctor' || userRole === 'admin';
+
+      if (!isDoctorOrAdmin && data.user && (!data.user.email_confirmed_at || data.user.user_metadata?.aura_verified === false)) {
         await supabase.auth.signOut();
         setOtpEmail(trimmedEmail);
         setShowOtpBox(true);

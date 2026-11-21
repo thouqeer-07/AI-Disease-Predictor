@@ -1,13 +1,59 @@
 const aiService = require('../services/aiService');
 const ragService = require('../services/ragService');
+const { supabase } = require('../lib/supabase');
 const path = require('path');
 const fs = require('fs');
 
 exports.predictDisease = async (req, res) => {
   try {
-    const { symptoms, behavioralData } = req.body;
+    const { symptoms, behavioralData, userId, userName, userEmail, notes } = req.body;
     const prediction = await aiService.getDiseasePrediction(symptoms, behavioralData);
+
+    // Save prediction into predictions table if userId is present
+    if (userId) {
+      try {
+        const top = (prediction.topPredictions && prediction.topPredictions[0]) ? prediction.topPredictions[0] : {};
+        const diseaseTitle = prediction.disease || prediction.predicted_disease || top.condition || prediction.condition || 'General Assessment';
+        const confScore = prediction.confidence || prediction.confidence_score || top.probability || '85%';
+
+        await supabase.from('predictions').insert([
+          {
+            user_id: userId,
+            user_name: userName || null,
+            user_email: userEmail || null,
+            symptoms: symptoms,
+            notes: notes || null,
+            predicted_disease: diseaseTitle,
+            confidence: String(confScore),
+            prediction_details: JSON.stringify(prediction),
+            created_at: new Date().toISOString()
+          }
+        ]);
+      } catch (dbErr) {
+        console.warn('Backend predictions table insert notice:', dbErr.message);
+      }
+    }
+
     res.json(prediction);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getAccountPredictions = async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user?.id;
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required.' });
+    }
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json({ predictions: data || [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

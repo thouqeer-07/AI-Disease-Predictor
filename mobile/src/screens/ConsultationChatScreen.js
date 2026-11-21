@@ -7,12 +7,12 @@ import {
   ScrollView, 
   StyleSheet, 
   TouchableOpacity, 
-  KeyboardAvoidingView, 
   Platform, 
   ActivityIndicator,
   Alert,
   Modal,
-  } from 'react-native';
+  Keyboard
+} from 'react-native';
 import { 
   Send, 
   ArrowLeft, 
@@ -38,6 +38,7 @@ const ConsultationChatScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   // Call schedule state
   const [callType, setCallType] = useState('Video');
@@ -46,6 +47,23 @@ const ConsultationChatScreen = ({ route, navigation }) => {
   const [schedulingCall, setSchedulingCall] = useState(false);
 
   const scrollViewRef = useRef(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardOffset(Platform.OS === 'ios' ? e.endCoordinates.height - 20 : e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!appointmentId || !user) return;
@@ -92,7 +110,7 @@ const ConsultationChatScreen = ({ route, navigation }) => {
         table: 'messages',
         filter: `appointment_id=eq.${appointmentId}`
       }, (payload) => {
-        setMessages(prev => [...prev, payload.new]);
+        setMessages(prev => prev.some(m => m.id === payload.new.id) ? prev : [...prev, payload.new]);
       })
       .subscribe();
 
@@ -122,23 +140,35 @@ const ConsultationChatScreen = ({ route, navigation }) => {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || sending || !appointment) return;
+    const msgText = newMessage.trim();
+    if (!msgText || sending || !appointment) return;
 
     setSending(true);
+    setNewMessage('');
     const receiverId = user.id === appointment.user_id ? appointment.doctor_id : appointment.user_id;
 
     try {
-      const { error } = await supabase.from('messages').insert([{
+      const { data, error } = await supabase.from('messages').insert([{
         appointment_id: appointmentId,
         sender_id: user.id,
         receiver_id: receiverId,
-        content: newMessage.trim()
-      }]);
+        content: msgText
+      }]).select();
 
       if (error) throw error;
-      setNewMessage('');
+      const insertedMsg = (data && data[0]) ? data[0] : {
+        id: `temp_${Date.now()}`,
+        appointment_id: appointmentId,
+        sender_id: user.id,
+        receiver_id: receiverId,
+        content: msgText,
+        created_at: new Date().toISOString()
+      };
+
+      setMessages(prev => prev.some(m => m.id === insertedMsg.id) ? prev : [...prev, insertedMsg]);
     } catch (err) {
       console.error('Send message error:', err);
+      setNewMessage(msgText);
       Alert.alert('Error', 'Failed to send message.');
     } finally {
       setSending(false);
@@ -157,7 +187,6 @@ const ConsultationChatScreen = ({ route, navigation }) => {
       const callNotes = `[Call: ${callType}]`;
       const updatedNotes = appointment.notes ? `${appointment.notes}\n${callNotes}` : callNotes;
 
-      // 1. Update appointment record
       const { error: apptErr } = await supabase
         .from('appointments')
         .update({
@@ -168,19 +197,22 @@ const ConsultationChatScreen = ({ route, navigation }) => {
 
       if (apptErr) throw apptErr;
 
-      // 2. Insert system notification message into chat stream
       const receiverId = user.id === appointment.user_id ? appointment.doctor_id : appointment.user_id;
       const formattedDateTime = combinedDateTime.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
       const systemMsgContent = `📅 Scheduled a ${callType} Call for ${formattedDateTime}`;
 
-      const { error: msgErr } = await supabase.from('messages').insert([{
+      const { data: msgData, error: msgErr } = await supabase.from('messages').insert([{
         appointment_id: appointmentId,
         sender_id: user.id,
         receiver_id: receiverId,
         content: systemMsgContent
-      }]);
+      }]).select();
 
       if (msgErr) throw msgErr;
+
+      if (msgData && msgData[0]) {
+        setMessages(prev => prev.some(m => m.id === msgData[0].id) ? prev : [...prev, msgData[0]]);
+      }
 
       setAppointment(prev => ({
         ...prev,
@@ -220,7 +252,6 @@ const ConsultationChatScreen = ({ route, navigation }) => {
     );
   }
 
-  // Lifecycle State 1: Locked Screen (status pending or rejected)
   if (appointment.status !== 'accepted' && appointment.status !== 'completed') {
     return (
       <SafeAreaView style={styles.container}>
@@ -254,17 +285,14 @@ const ConsultationChatScreen = ({ route, navigation }) => {
     );
   }
 
+  const isDoctor = user?.id === appointment?.doctor_id || user?.user_metadata?.role === 'doctor';
   const otherPersonName = user.id === appointment.user_id 
     ? `Dr. ${appointment.doctor_name || 'Doctor'}` 
     : (appointment.patient_name || 'Patient');
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 90}
-      >
+      <View style={{ flex: 1, paddingBottom: keyboardOffset }}>
         {/* Room Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -272,7 +300,7 @@ const ConsultationChatScreen = ({ route, navigation }) => {
               <ArrowLeft size={22} color="#0f172a" />
             </TouchableOpacity>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarLetter}>{otherPersonName.charAt(0)}</Text>
+              <Text style={styles.avatarLetter}>{otherPersonName.charAt(0).toUpperCase()}</Text>
             </View>
             <View>
               <Text style={styles.headerTitle}>{otherPersonName}</Text>
@@ -283,7 +311,7 @@ const ConsultationChatScreen = ({ route, navigation }) => {
             </View>
           </View>
 
-          {appointment.status !== 'completed' && (
+          {isDoctor && appointment.status !== 'completed' && (
             <TouchableOpacity 
               style={styles.scheduleBtn} 
               onPress={() => {
@@ -449,7 +477,7 @@ const ConsultationChatScreen = ({ route, navigation }) => {
             </View>
           </View>
         </Modal>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 };
@@ -511,9 +539,9 @@ const styles = StyleSheet.create({
   bookAgainBtn: { marginTop: 12, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#1d4ed8', borderRadius: 10 },
   bookAgainText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
 
-  inputContainer: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#f1f5f9', gap: 10 },
-  input: { flex: 1, backgroundColor: '#f8fafc', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, color: '#0f172a', maxHeight: 100 },
-  sendBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#1d4ed8', alignItems: 'center', justifyContent: 'center' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#f1f5f9', gap: 10 },
+  input: { flex: 1, backgroundColor: '#f8fafc', borderRadius: 20, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, fontSize: 14, color: '#0f172a', maxHeight: 100, minHeight: 44, borderWidth: 1, borderColor: '#e2e8f0' },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1d4ed8', alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { backgroundColor: '#94a3b8' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', padding: 20 },
